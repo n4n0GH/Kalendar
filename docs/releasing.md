@@ -113,7 +113,8 @@ a new home of the repository.
 ### The signing key
 
 Everything published is signed with a GPG key made for this purpose
-(`Kalendar Flatpak repository`).
+(`Kalendar Flatpak repository`, fingerprint
+`22AF 6A63 8861 5D09 2341 40D3 EECC F3F9 8B4E A97C`).
 
 - Its secret half is the repository secret `FLATPAK_GPG_PRIVATE_KEY`:
   ASCII-armoured, without a passphrase.
