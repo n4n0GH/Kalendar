@@ -1,0 +1,111 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Kalendar contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Turns the repository that flatpak-builder exported into a web site that
+# Flatpak can install and update Kalendar from, and makes a bundle that
+# remembers where it came from.
+#
+#   flatpak/make-site.sh REPO SITE URL [BRANCH]
+#
+# REPO    the exported repository (flatpak-builder --repo)
+# SITE    directory to create; to be served at URL
+# URL     where SITE will be reachable, without a slash at the end
+# BRANCH  branch of the application in REPO (default: stable)
+#
+# With the secret key of a GPG key in the environment variable
+# GPG_PRIVATE_KEY, the repository is signed and the files for installing
+# carry the public key, so that Flatpak verifies what it downloads.
+
+set -eu
+
+repo=$1
+site=$2
+url=$3
+branch=${4:-stable}
+app=io.github.n4n0gh.kalendar
+runtime_repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+
+sign=
+bundle_key=
+key_line=
+if [ -n "${GPG_PRIVATE_KEY:-}" ]; then
+    GNUPGHOME=$(mktemp -d)
+    export GNUPGHOME
+    trap 'rm -rf "$GNUPGHOME"' EXIT
+    printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+    key_id=$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "sec" { print $5; exit }')
+    sign="--gpg-sign=$key_id --gpg-homedir=$GNUPGHOME"
+    gpg --batch --export "$key_id" > "$GNUPGHOME/public.gpg"
+    key_line="GPGKey=$(base64 -w 0 < "$GNUPGHOME/public.gpg")"
+    bundle_key="--gpg-keys=$GNUPGHOME/public.gpg"
+    # shellcheck disable=SC2086
+    flatpak build-sign "$repo" "$app" "$branch" $sign
+    # Translations and debug symbols are published as parts of their own,
+    # and are refused by clients unless signed as well.
+    for part in Locale Debug; do
+        if ls "$repo/refs/heads/runtime/$app.$part"/*/"$branch" > /dev/null 2>&1; then
+            # shellcheck disable=SC2086
+            flatpak build-sign --runtime "$repo" "$app.$part" "$branch" $sign
+        fi
+    done
+    # The description that software centres show is a branch too. Dropping
+    # it makes the next step write it anew, signed.
+    rm -rf "$repo/refs/heads/appstream" "$repo/refs/heads/appstream2"
+fi
+
+# The summary is what clients read to learn what the repository offers.
+# shellcheck disable=SC2086
+flatpak build-update-repo --title=Kalendar --default-branch="$branch" --prune $sign "$repo"
+
+rm -rf "$site"
+mkdir -p "$site"
+cp -a "$repo" "$site/repo"
+
+# Installs Kalendar and adds the repository, for updates.
+cat > "$site/kalendar.flatpakref" <<REF
+[Flatpak Ref]
+Name=$app
+Branch=$branch
+Title=Kalendar
+Url=$url/repo/
+RuntimeRepo=$runtime_repo
+IsRuntime=false
+$key_line
+REF
+
+# Adds the repository only.
+cat > "$site/kalendar.flatpakrepo" <<REPO
+[Flatpak Repo]
+Title=Kalendar
+Url=$url/repo/
+Homepage=https://github.com/n4n0gh/kalendar
+Comment=A simple calendar that works with online accounts
+DefaultBranch=$branch
+$key_line
+REPO
+
+cat > "$site/index.html" <<HTML
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalendar for Flatpak</title>
+<style>
+  body { font: 1rem/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+  code { background: #8882; padding: .1em .3em; border-radius: .2em; }
+</style>
+<h1>Kalendar</h1>
+<p>A simple calendar that works with online accounts, for the Plasma desktop.</p>
+<p><a href="kalendar.flatpakref">Install Kalendar</a> with Discover or another software centre, or from a terminal:</p>
+<p><code>flatpak install --user $url/kalendar.flatpakref</code></p>
+<p>Installed this way, Kalendar is kept up to date together with your other applications.</p>
+<p><a href="https://github.com/n4n0gh/kalendar">Source code and more about Kalendar</a></p>
+</html>
+HTML
+
+# A single file for those who prefer a download; it updates from the same place.
+# shellcheck disable=SC2086
+flatpak build-bundle --repo-url="$url/repo/" --runtime-repo="$runtime_repo" $bundle_key "$repo" kalendar.flatpak "$app" "$branch"
+
+echo "Site for $url written to $site"

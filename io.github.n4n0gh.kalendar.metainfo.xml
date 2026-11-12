@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 Kalendar contributors
+SPDX-License-Identifier: CC0-1.0
+-->
+<component type="desktop-application">
+  <id>io.github.n4n0gh.kalendar</id>
+  <name>Kalendar</name>
+  <summary>A simple calendar that works with online accounts</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.n4n0gh">
+    <name>Kalendar contributors</name>
+  </developer>
+  <description>
+    <p>Kalendar shows what is on by month, week or day, and keeps events in step with online calendars: Google Calendar, and
+      any service that offers CalDAV, such as Nextcloud, iCloud and Fastmail.</p>
+    <p>Events can be added and changed without a network connection; they are sent on when there is one again.</p>
+  </description>
+  <url type="homepage">https://github.com/n4n0gh/kalendar</url>
+  <url type="bugtracker">https://github.com/n4n0gh/kalendar/issues</url>
+  <url type="vcs-browser">https://github.com/n4n0gh/kalendar</url>
+  <launchable type="desktop-id">io.github.n4n0gh.kalendar.desktop</launchable>
+  <categories>
+    <category>Office</category>
+    <category>Calendar</category>
+  </categories>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A month with its events</caption>
+      <image>https://raw.githubusercontent.com/n4n0GH/Kalendar/main/docs/month.png</image>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>kalendar</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-12">
+      <description>
+        <p>The first version: month, week and day views, and calendars from Google and from any service that offers CalDAV.</p>
+      </description>
+    </release>
+  </releases>
+</component>

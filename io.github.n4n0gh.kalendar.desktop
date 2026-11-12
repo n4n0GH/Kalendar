@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Kalendar contributors
+# SPDX-License-Identifier: CC0-1.0
+[Desktop Entry]
+Type=Application
+Name=Kalendar
+GenericName=Calendar
+Comment=A simple calendar that works with online accounts
+Exec=kalendar
+Icon=io.github.n4n0gh.kalendar
+Terminal=false
+Categories=Qt;KDE;Office;Calendar;
+Keywords=calendar;event;appointment;schedule;CalDAV;Google;Nextcloud;iCloud;

@@ -1,0 +1,7 @@
+{
+    "KPlugin": {
+        "Description": "Events from the calendars in Kalendar",
+        "Icon": "office-calendar",
+        "Name": "Kalendar"
+    }
+}

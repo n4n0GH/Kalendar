@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Kalendar contributors
+# SPDX-License-Identifier: CC0-1.0
+#
+# Builds Kalendar as a Flatpak:
+#
+#   flatpak-builder --user --install --force-clean build-flatpak flatpak/io.github.n4n0gh.kalendar.yml
+#   flatpak run io.github.n4n0gh.kalendar
+
+id: io.github.n4n0gh.kalendar
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: kalendar
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Synchronizing with the accounts' servers. Signing in to Google also needs
+  # it: the web browser hands the result to a port on this system.
+  - --share=network
+  # The accounts' passwords.
+  - --talk-name=org.kde.kwalletd6
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /mkspecs
+  - /share/doc
+  - '*.a'
+
+modules:
+  # Everything Kalendar builds on is part of the KDE runtime.
+  - name: kalendar
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      # It would have to be installed in the system's Plasma, not in here.
+      - -DBUILD_PLASMA_PLUGIN=OFF
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - build
+          - build-flatpak
+          - repo
+          - site
