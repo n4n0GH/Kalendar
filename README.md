@@ -9,11 +9,15 @@ A simple calendar for KDE Plasma that works with online accounts.
 
 ![The month view](docs/month.png)
 
-- Month, week and day views.
-- Google Calendar, and any service that offers CalDAV: Nextcloud, iCloud, Fastmail, Radicale, and others.
+- Month, week and day views, and an agenda of the next three or seven days.
+- Google Calendar, through the Google accounts the system is signed in to, and any service that offers CalDAV: Nextcloud,
+  iCloud, Fastmail, Radicale, and others.
 - A calendar that is kept on this system only, so the app is usable from the first start.
 - Events can be added, changed and deleted without a network; they are sent on at the next synchronization.
 - Repeating events (every day, week, month or year); other rhythms made elsewhere are shown and kept.
+- A click on an event shows it to read, with notes written as HTML shown as such; editing is one step further.
+- Events in the calendar of Plasma's clock, with a plugin that is installed from the settings.
+- Settings for 12 or 24 hours, the first day of the week, and week numbers.
 - Follows the system's colour scheme, fonts and locale, and reshapes itself for narrow windows and phones.
 
 It is built with Qt Quick and Kirigami along the [Kirigami Design Guide](https://n4n0gh.github.io/Doku).
@@ -109,17 +113,21 @@ a few example events, keeps its data apart (in `~/.qttest`), and leaves the wall
 | Path | What it holds |
 | --- | --- |
 | `src/core/` | Storage and synchronization, without any GUI: the database, the clients for CalDAV and for Google's Calendar API, and the engine that keeps both in step and lays events out for the views. |
-| `src/backend.*` | What the interface asks of the calendars; adds the wallet and signing in. |
+| `src/backend.*` | What the interface asks of the calendars; adds signing in and settings. |
 | `src/onlineaccounts.*`, `src/secretstore.*` | The Google accounts of the system's Online Accounts; passwords in KWallet. |
+| `src/clockplugin.*`, `src/plasma/` | Installing the plugin for the calendar of Plasma's clock, and the plugin. |
 | `src/qml/` | The interface. |
-| `src/plasma/` | The plugin for the calendar of Plasma's clock. |
 | `autotests/` | Tests for the above. |
+
+The [code documentation](docs/README.md) goes into each of these: architecture, synchronization, accounts and signing
+in, the interface, the clock plugin, and how to build, test and extend it.
 
 ## Not there yet
 
 - Reminders, invitations and attendees, and tasks.
-- Changing a single day of a repeating event (deleting one works).
+- Changing a single day of a repeating event (deleting one works, and days changed elsewhere are shown and can be edited).
 - Creating, renaming and recolouring calendars; they are taken as the server has them.
+- Fetching only what changed from Google: its calendars are read in full at every synchronization.
 - Translations: all text is marked for translation, but none exist so far.
 
 ## Licence
