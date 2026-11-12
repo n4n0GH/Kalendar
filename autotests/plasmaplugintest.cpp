@@ -45,10 +45,16 @@ private Q_SLOTS:
             });
         });
 
+        // Plasma drops what it has and then asks for the days it shows.
+        const auto load = [&](const QDate &from, const QDate &to) {
+            shown.clear();
+            plugin->loadEventsForDateRange(from, to);
+        };
+
         // Before Kalendar was ever started there is nothing, and nothing goes wrong.
         const QDate first(2026, 11, 1);
         const QDate last(2026, 11, 30);
-        plugin->loadEventsForDateRange(first, last);
+        load(first, last);
         QVERIFY(shown.isEmpty());
         QVERIFY(!QFile::exists(database));
 
@@ -84,13 +90,36 @@ private Q_SLOTS:
             QVERIFY(shown.values(QDate(2026, 11, day)).first().isAllDay());
         }
         QVERIFY(!shown.contains(QDate(2026, 11, 23)));
+        // Plasma builds its calendar anew every time events are taken back,
+        // which brings it to a halt if that happens event by event. The
+        // events came in two steps, so they were taken back once at most.
+        QCOMPARE_LE(removed.size(), 1);
+        removed.clear();
 
         // Another month is asked for: only that month's events are there then.
-        plugin->loadEventsForDateRange(QDate(2026, 12, 1), QDate(2026, 12, 31));
+        load(QDate(2026, 12, 1), QDate(2026, 12, 31));
         QCOMPARE(shown.size(), 5); // the Thursdays of December
         QVERIFY(shown.contains(QDate(2026, 12, 31)));
-        plugin->loadEventsForDateRange(first, last);
+        load(first, last);
         QCOMPARE(shown.size(), 6);
+        QVERIFY(removed.isEmpty());
+
+        // Reading the database made files appear next to it. That is no
+        // change: nothing is taken back and nothing comes twice.
+        QTest::qWait(1500);
+        QCOMPARE(shown.size(), 6);
+        QVERIFY(removed.isEmpty());
+
+        // The lunch moves to another place: everything is taken back in one go and comes again.
+        const QList<Occurrence> lunches = kalendar.occurrences(QDate(2026, 11, 12), QDate(2026, 11, 12));
+        QCOMPARE(lunches.size(), 1);
+        QCOMPARE(kalendar.saveEvent({{u"collectionId"_s, calendar}, {u"originalCollectionId"_s, calendar}, {u"href"_s, lunches.first().href},
+                                     {u"summary"_s, u"Lunch"_s}, {u"location"_s, u"Canteen"_s}, {u"start"_s, lunch}, {u"end"_s, lunch.addSecs(3600)},
+                                     {u"repeat"_s, u"weekly"_s}}),
+                 QString());
+        QTRY_COMPARE_WITH_TIMEOUT(removed.size(), 1, 5000);
+        QCOMPARE(shown.size(), 6);
+        QCOMPARE(shown.value(QDate(2026, 11, 26)).location(), u"Canteen"_s);
 
         // The trip is deleted in Kalendar.
         const QVariantList segments = kalendar.weekLayout(QDate(2026, 11, 20), 1, true, 0).value(u"segments"_s).toList();
@@ -98,10 +127,12 @@ private Q_SLOTS:
         QVERIFY(kalendar.deleteEvent(calendar, segments.first().toMap().value(u"href"_s).toString(), {}, true) != 0);
         QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 3, 5000);
         QVERIFY(!shown.contains(QDate(2026, 11, 21)));
+        QCOMPARE(removed.size(), 2);
 
         // A calendar that is hidden in Kalendar is hidden here too.
         kalendar.setCollectionEnabled(calendar, false);
         QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 0, 5000);
+        QCOMPARE(removed.size(), 3); // once, although three events went
 
         // Kalendar's database was only read: the same file as Kalendar left it.
         QVERIFY(kalendar.pendingChanges() == 0);

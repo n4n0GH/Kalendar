@@ -20,7 +20,17 @@ calendars that are shown in Kalendar. An event that takes several days is
 listed on each of them.
 
 It watches the database file and reads it again a moment after it changes, so
-it follows Kalendar by itself. It never synchronizes: events from servers
+it follows Kalendar by itself. If the days that are shown differ then, it
+takes all its events back and hands them over anew; if they do not, Plasma
+hears nothing.
+
+Plasma (6.8 at least) builds its calendar anew for every event a plugin takes
+back (`eventRemoved()`), one after the other and slower each time: a few dozen
+in a row freeze the whole shell while its memory grows without end. Events
+are taken back by their identifier, so the plugin gives all of them the same
+one. One signal then takes back everything, whatever changed. Asking for a
+range of days never takes anything back, because Plasma has dropped what it
+had by then. It never synchronizes: events from servers
 are as fresh as Kalendar's last round, so Kalendar has to run now and then.
 
 There may be two databases, one of a native Kalendar and one of the Flatpak.

@@ -54,11 +54,29 @@ void KalendarEventsPlugin::watch()
     }
 }
 
+namespace
+{
+// Plasma builds its calendar anew for every event that is taken back, one
+// after the other, and gets slower each time: a few dozen in a row bring the
+// whole shell to a halt. Events are taken back by name, though, so all of
+// Kalendar's go by one name and are taken back at once.
+const QString Everything = u"io.github.n4n0gh.kalendar"_s;
+
+bool same(const CalendarEvents::EventData &a, const CalendarEvents::EventData &b)
+{
+    return a.title() == b.title() && a.description() == b.description() && a.location() == b.location() && a.isAllDay() == b.isAllDay()
+        && a.startDateTime() == b.startDateTime() && a.endDateTime() == b.endDateTime() && a.eventColor() == b.eventColor();
+}
+}
+
 void KalendarEventsPlugin::loadEventsForDateRange(const QDate &startDate, const QDate &endDate)
 {
     m_start = startDate;
     m_end = endDate;
-    reload();
+    // Plasma has dropped what it had before it asks, so there is nothing to
+    // take back: what is there now is all it needs.
+    m_shown = read().value_or(Shown());
+    announce(m_shown);
 }
 
 void KalendarEventsPlugin::reload()
@@ -67,22 +85,59 @@ void KalendarEventsPlugin::reload()
     if (!m_start.isValid() || !m_end.isValid()) {
         return;
     }
-    // Take back what was shown; what is still there comes again below.
-    for (const QString &uid : std::as_const(m_shown)) {
-        Q_EMIT eventRemoved(uid);
+    const std::optional<Shown> now = read();
+    if (!now) {
+        return; // it is there but cannot be read right now: what is shown stays
     }
-    m_shown.clear();
+    // Not every change of the files is one of the days that are shown; reading
+    // them makes files appear next to the database, for one.
+    const bool unchanged = now->size() == m_shown.size() && std::all_of(now->keyBegin(), now->keyEnd(), [&](const QString &key) {
+        const auto before = m_shown.constFind(key);
+        const Entry &entry = *now->constFind(key);
+        return before != m_shown.cend() && before->firstDay == entry.firstDay && before->lastDay == entry.lastDay && same(before->event, entry.event);
+    });
+    if (unchanged) {
+        return;
+    }
+    if (!m_shown.isEmpty()) {
+        Q_EMIT eventRemoved(Everything);
+    }
+    m_shown = *now;
+    announce(m_shown);
+}
 
-    Engine engine;
-    if (!QFileInfo::exists(m_database) || !engine.openReadOnly(m_database)) {
-        return; // Kalendar has not been used yet
-    }
+void KalendarEventsPlugin::announce(const Shown &events)
+{
     QMultiHash<QDate, CalendarEvents::EventData> data;
+    for (const Entry &entry : events) {
+        // An event that takes several days is listed on each of them.
+        for (QDate day = std::max(entry.firstDay, m_start); day <= std::min(entry.lastDay, m_end); day = day.addDays(1)) {
+            data.insert(day, entry.event);
+        }
+    }
+    if (!data.isEmpty()) {
+        Q_EMIT dataReady(data);
+    }
+}
+
+std::optional<KalendarEventsPlugin::Shown> KalendarEventsPlugin::read() const
+{
+    Shown result;
+    if (!QFileInfo::exists(m_database)) {
+        return result; // Kalendar has not been used yet
+    }
+    Engine engine;
+    if (!engine.openReadOnly(m_database)) {
+        return std::nullopt;
+    }
     const QList<Occurrence> occurrences = engine.occurrences(m_start, m_end);
     for (const Occurrence &occurrence : occurrences) {
         const Collection *calendar = engine.collection(occurrence.collectionId);
-        CalendarEvents::EventData event;
-        event.setUid(occurrence.href + u'#' + QString::number(occurrence.start.toMSecsSinceEpoch()));
+        Entry entry;
+        entry.firstDay = occurrence.firstDay;
+        entry.lastDay = occurrence.lastDay;
+        CalendarEvents::EventData &event = entry.event;
+        event.setUid(Everything);
         event.setEventType(CalendarEvents::EventData::Event);
         event.setTitle(occurrence.event->summary());
         event.setDescription(occurrence.event->description());
@@ -93,13 +148,7 @@ void KalendarEventsPlugin::reload()
         if (calendar) {
             event.setEventColor(calendar->color.name());
         }
-        m_shown.insert(event.uid());
-        // An event that takes several days is listed on each of them.
-        for (QDate day = std::max(occurrence.firstDay, m_start); day <= std::min(occurrence.lastDay, m_end); day = day.addDays(1)) {
-            data.insert(day, event);
-        }
+        result.insert(occurrence.href + u'#' + QString::number(occurrence.start.toMSecsSinceEpoch()), entry);
     }
-    if (!data.isEmpty()) {
-        Q_EMIT dataReady(data);
-    }
+    return result;
 }
