@@ -16,12 +16,20 @@ ColumnLayout {
 
     signal dateChosen(date date)
 
-    readonly property int firstDayOfWeek: Qt.locale().firstDayOfWeek
+    readonly property int firstDayOfWeek: Backend.firstDayOfWeek
     readonly property date gridStart: {
         const first = new Date(shownMonth.getFullYear(), shownMonth.getMonth(), 1)
         return new Date(first.getFullYear(), first.getMonth(), 1 - (first.getDay() - firstDayOfWeek + 7) % 7)
     }
     readonly property real cellSize: Kirigami.Units.gridUnit + Kirigami.Units.largeSpacing
+
+    // The number of the week @p day is in, counted as the standard (ISO 8601)
+    // does: weeks belong to the year their Thursday is in.
+    function weekNumber(day: date): int {
+        const thursday = new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate() + 3 - (day.getDay() + 6) % 7))
+        const firstOfYear = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1))
+        return Math.floor((thursday.getTime() - firstOfYear.getTime()) / 86400000 / 7) + 1
+    }
 
     function showMonth(offset: int): void {
         shownMonth = new Date(shownMonth.getFullYear(), shownMonth.getMonth() + offset, 1)
@@ -62,8 +70,41 @@ ColumnLayout {
         }
     }
 
-    Grid {
+    RowLayout {
         Layout.alignment: Qt.AlignHCenter
+        spacing: 0
+
+        // The numbers of the weeks, beside their rows.
+        Column {
+            visible: Backend.showWeekNumbers
+
+            QQC2.Label {
+                width: mini.cellSize
+                // As tall as the names of the days beside it.
+                text: " "
+            }
+            Repeater {
+                model: 6
+
+                QQC2.Label {
+                    required property int index
+                    // Told by the middle of the row, wherever weeks start.
+                    readonly property int number: mini.weekNumber(new Date(mini.gridStart.getFullYear(), mini.gridStart.getMonth(),
+                        mini.gridStart.getDate() + index * 7 + 3))
+
+                    width: mini.cellSize
+                    height: mini.cellSize
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    text: number
+                    font: Kirigami.Theme.smallFont
+                    opacity: 0.75
+                    Accessible.name: i18nc("@info %1 is a number", "Week %1", number)
+                }
+            }
+        }
+
+    Grid {
         columns: 7
 
         Repeater {
@@ -116,5 +157,6 @@ ColumnLayout {
                 }
             }
         }
+    }
     }
 }

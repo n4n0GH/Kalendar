@@ -15,7 +15,7 @@ QQC2.ComboBox {
     signal timeChosen(date time)
 
     function show(): void {
-        editText = value.toLocaleTimeString(Qt.locale(), Locale.ShortFormat)
+        editText = Backend.formatTime(value, Backend.use24Hour)
     }
 
     // Takes over what was typed if it names a time, and puts back the old one if not.
@@ -35,12 +35,13 @@ QQC2.ComboBox {
     model: {
         const times = []
         for (let halfHour = 0; halfHour < 48; halfHour++) {
-            times.push(new Date(2000, 0, 1, Math.floor(halfHour / 2), halfHour % 2 * 30).toLocaleTimeString(Qt.locale(), Locale.ShortFormat))
+            times.push(Backend.formatTime(new Date(2000, 0, 1, Math.floor(halfHour / 2), halfHour % 2 * 30), Backend.use24Hour))
         }
         return times
     }
 
     onValueChanged: show()
+    onModelChanged: show()
     Component.onCompleted: show()
     onActivated: index => commit(textAt(index))
     onAccepted: commit(editText)

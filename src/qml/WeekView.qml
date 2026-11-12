@@ -13,14 +13,17 @@ Item {
 
     property date selectedDate: new Date()
     property int dayCount: 7
+    // Whether several days are a week, from its first day on; otherwise
+    // they are the selected day and those that follow.
+    property bool wholeWeek: true
 
     signal dateSelected(date date)
     signal newEventRequested(date start, bool allDay)
     signal eventActivated(var event)
     signal dayActivated(date date)
 
-    readonly property int firstDayOfWeek: Qt.locale().firstDayOfWeek
-    readonly property date rangeStart: dayCount === 1
+    readonly property int firstDayOfWeek: Backend.firstDayOfWeek
+    readonly property date rangeStart: dayCount === 1 || !wholeWeek
         ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
         : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - (selectedDate.getDay() - firstDayOfWeek + 7) % 7)
     // The column with the hours, wide enough for the widest of them.
@@ -37,8 +40,8 @@ Item {
         return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)
     }
 
-    function hourText(hour: int): string {
-        return new Date(2000, 0, 1, hour).toLocaleTimeString(Qt.locale(), Locale.ShortFormat)
+    function hourText(hour: int, use24Hour: bool): string {
+        return Backend.formatTime(new Date(2000, 0, 1, hour), use24Hour)
     }
 
     Kirigami.Theme.colorSet: Kirigami.Theme.View
@@ -52,7 +55,7 @@ Item {
     TextMetrics {
         id: hourMetrics
         font: Kirigami.Theme.defaultFont
-        text: view.hourText(22)
+        text: view.hourText(22, Backend.use24Hour)
     }
 
     // Moves the line that marks the present time.
@@ -244,7 +247,7 @@ Item {
                             width: view.gutter - Kirigami.Units.largeSpacing
                             y: -height / 2
                             horizontalAlignment: Text.AlignRight
-                            text: view.hourText(parent.index)
+                            text: view.hourText(parent.index, Backend.use24Hour)
                             opacity: 0.75
                         }
                     }

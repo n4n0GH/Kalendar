@@ -14,6 +14,7 @@ struct Account {
     enum Type {
         Local = 0,
         CalDav = 1,
+        /// A Google account that the system's Online Accounts signed in to.
         Google = 2,
     };
 
@@ -21,8 +22,10 @@ struct Account {
     Type type = Local;
     /// Shown to the user, such as "ada@example.org".
     QString name;
-    /// The folder on the server that holds the calendars (the "calendar home").
+    /// The folder on the server that holds the calendars (the "calendar
+    /// home"); for Google, where its Calendar API is.
     QUrl url;
+    /// Who signs in; for Google, the number of the account in Online Accounts.
     QString user;
 };
 

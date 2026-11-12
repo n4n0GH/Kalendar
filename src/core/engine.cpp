@@ -3,6 +3,8 @@
 
 #include "engine.h"
 
+#include "googleclient.h"
+
 #include <KCalendarCore/ICalFormat>
 #include <KCalendarCore/OccurrenceIterator>
 #include <KLocalizedString>
@@ -121,19 +123,30 @@ QColor Engine::defaultColor(int index)
     return palette.at(index % palette.size());
 }
 
+void Engine::nameLocalAccount()
+{
+    // Named anew at every start, so that the name follows the language.
+    for (Account &account : m_accounts) {
+        if (account.type == Account::Local) {
+            account.name = i18nc("@title the account for calendars kept on this system only", "Local Calendars");
+        }
+    }
+}
+
 bool Engine::open(const QString &path)
 {
     if (!m_db.open(path)) {
         return false;
     }
     m_accounts = m_db.accounts();
+    nameLocalAccount();
     m_collections = m_db.collections();
     if (!account(LocalAccountId)) {
         Account local;
         local.id = LocalAccountId;
         local.type = Account::Local;
-        local.name = i18nc("@title the account for calendars kept on this system only", "On This System");
         m_accounts.prepend(local);
+        nameLocalAccount();
         m_db.saveAccount(local);
 
         Collection personal;
@@ -163,6 +176,7 @@ bool Engine::openReadOnly(const QString &path)
         return false;
     }
     m_accounts = m_db.accounts();
+    nameLocalAccount();
     m_collections = m_db.collections();
     load();
     return true;
@@ -229,10 +243,12 @@ void Engine::setAccountError(const QString &accountId, const QString &error)
     Q_EMIT errorsChanged();
 }
 
-DavClient *Engine::clientFor(const Account &account, const QByteArray &authorization)
+CalendarClient *Engine::clientFor(const Account &account, const QByteArray &authorization)
 {
-    DavClient *&client = m_clients[account.id];
-    if (!client) {
+    CalendarClient *&client = m_clients[account.id];
+    if (!client && account.type == Account::Google) {
+        client = new GoogleClient(m_network, this);
+    } else if (!client) {
         client = new DavClient(m_network, this);
     }
     client->setAuthorization(authorization);
@@ -247,6 +263,24 @@ void Engine::discover(const QUrl &address, const QByteArray &authorization, cons
     client->setAuthorization(authorization);
     client->discover(address, [client, done](const Discovery &discovery) {
         client->deleteLater();
+        done(discovery);
+    });
+}
+
+void Engine::discoverGoogle(const QUrl &api, const QByteArray &authorization, const std::function<void(const Discovery &)> &done)
+{
+    auto *client = new GoogleClient(m_network, this);
+    client->setAuthorization(authorization);
+    client->listCalendars(api, [client, api, done](const DavReply &reply, const QList<CalendarInfo> &calendars) {
+        client->deleteLater();
+        Discovery discovery;
+        discovery.home = api;
+        discovery.calendars = calendars;
+        if (!reply.ok) {
+            discovery.error = reply.error;
+        } else if (calendars.isEmpty()) {
+            discovery.error = i18nc("@info", "The account has no calendars.");
+        }
         done(discovery);
     });
 }
@@ -282,7 +316,7 @@ void Engine::removeAccount(const QString &id)
         return account.id == id;
     });
     m_db.removeAccount(id);
-    if (DavClient *client = m_clients.take(id)) {
+    if (CalendarClient *client = m_clients.take(id)) {
         client->deleteLater();
     }
     m_errors.remove(id);
@@ -527,6 +561,8 @@ QVariantMap Engine::toVariant(const Occurrence &occurrence) const
         {u"end"_s, occurrence.end},
         {u"allDay"_s, occurrence.allDay},
         {u"color"_s, found ? found->color : QColor()},
+        {u"calendarName"_s, found ? found->name : QString()},
+        {u"accountName"_s, found && account(found->accountId) ? account(found->accountId)->name : QString()},
         {u"readOnly"_s, found && found->readOnly},
         {u"repeats"_s, event->recurs() || event->hasRecurrenceId()},
         {u"repeat"_s, event->hasRecurrenceId() ? u"exception"_s : repeatKind(event)},
@@ -814,8 +850,17 @@ QString Engine::saveEvent(const QVariantMap &data)
         etag.clear();
     }
     if (href.isEmpty()) {
-        const bool local = account(target->accountId)->type == Account::Local;
-        href = local ? u"local:"_s + event->uid() : DavClient::absolute(target->url, event->uid() + u".ics"_s);
+        switch (account(target->accountId)->type) {
+        case Account::Local:
+            href = u"local:"_s + event->uid();
+            break;
+        case Account::CalDav:
+            href = DavClient::absolute(target->url, event->uid() + u".ics"_s);
+            break;
+        case Account::Google:
+            href = GoogleClient::hrefFor(target->url, event->uid());
+            break;
+        }
     }
     setItem(target->id, href, etag, serialize(events), ItemRecord::Changed);
     Q_EMIT eventsChanged();
@@ -894,6 +939,11 @@ bool Engine::isSyncing() const
     return !m_syncing.isEmpty();
 }
 
+double Engine::syncProgress() const
+{
+    return m_syncTotal > 0 ? double(m_syncDone) / m_syncTotal : -1;
+}
+
 int Engine::pendingChanges() const
 {
     int count = 0;
@@ -916,6 +966,11 @@ void Engine::syncAll()
 void Engine::syncFinished(const QString &accountId)
 {
     if (m_syncing.remove(accountId)) {
+        if (m_syncing.isEmpty()) {
+            m_syncTotal = 0;
+            m_syncDone = 0;
+            Q_EMIT syncProgressChanged();
+        }
         Q_EMIT syncingChanged();
     }
 }
@@ -938,7 +993,7 @@ void Engine::syncAccount(const QString &id)
             syncFinished(id);
             return;
         }
-        DavClient *client = clientFor(*found, authorization);
+        CalendarClient *client = clientFor(*found, authorization);
         client->listCalendars(found->url, [this, id, client](const DavReply &reply, const QList<CalendarInfo> &calendars) {
             if (!account(id) || !m_syncing.contains(id)) {
                 return;
@@ -964,7 +1019,13 @@ void Engine::syncAccount(const QString &id)
                 return;
             }
             m_syncing[id] = todo.size();
+            m_syncTotal += todo.size();
+            Q_EMIT syncProgressChanged();
             const auto oneDone = [this, id] {
+                if (m_syncing.contains(id)) {
+                    ++m_syncDone;
+                    Q_EMIT syncProgressChanged();
+                }
                 if (m_syncing.contains(id) && --m_syncing[id] <= 0) {
                     syncFinished(id);
                 }
@@ -992,7 +1053,7 @@ void Engine::syncAccount(const QString &id)
     });
 }
 
-void Engine::pull(const QString &collectionId, DavClient *client, const QString &ctag, const std::function<void()> &done)
+void Engine::pull(const QString &collectionId, CalendarClient *client, const QString &ctag, const std::function<void()> &done)
 {
     const Collection *found = collection(collectionId);
     if (!found) {
@@ -1021,12 +1082,14 @@ void Engine::pull(const QString &collectionId, DavClient *client, const QString 
         }
         bool changed = false;
         const QStringList known = state.items.keys();
+        m_db.begin();
         for (const QString &href : known) {
             if (!etags.contains(href) && state.items.value(href).dirty == ItemRecord::Clean) {
                 dropItem(collectionId, href);
                 changed = true;
             }
         }
+        m_db.commit();
         const auto finish = [=, this](bool complete, bool changed) {
             Collection *found = findCollection(collectionId);
             if (found && complete && found->ctag != ctag) {
@@ -1053,11 +1116,13 @@ void Engine::pull(const QString &collectionId, DavClient *client, const QString 
                 return;
             }
             const State &state = m_state[collectionId];
+            m_db.begin();
             for (const FetchedItem &item : items) {
                 if (state.items.value(item.href).dirty == ItemRecord::Clean) {
                     setItem(collectionId, item.href, item.etag, item.ics, ItemRecord::Clean);
                 }
             }
+            m_db.commit();
             finish(true, changed || !items.isEmpty());
         });
     });
@@ -1134,7 +1199,7 @@ void Engine::pushFinished(const QString &collectionId)
     }
 }
 
-void Engine::pushNext(const QString &collectionId, DavClient *client)
+void Engine::pushNext(const QString &collectionId, CalendarClient *client)
 {
     const Collection *found = collection(collectionId);
     if (!found) {
@@ -1221,7 +1286,7 @@ void Engine::pushNext(const QString &collectionId, DavClient *client)
     });
 }
 
-void Engine::resolveConflict(const QString &collectionId, const QString &href, DavClient *client)
+void Engine::resolveConflict(const QString &collectionId, const QString &href, CalendarClient *client)
 {
     const Collection *found = collection(collectionId);
     if (!found) {

@@ -7,20 +7,36 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
 // A small month to jump to a day, and the calendars with a tick each to
-// show or hide their events.
+// show or hide their events. Accounts are added in the settings.
 Kirigami.GlobalDrawer {
     id: drawer
 
     property date selectedDate: new Date()
 
     signal dateChosen(date date)
-    signal addAccountRequested()
 
-    // Beside the calendar while there is room, and opened on demand otherwise.
+    // Put away by the user, to have all the room for the calendar.
+    property bool collapsed: false
+
+    // Beside the calendar while there is room and it is not put away, and
+    // opened on demand otherwise.
     readonly property bool roomy: !Kirigami.Settings.isMobile && applicationWindow().width >= Kirigami.Units.gridUnit * 44
     modal: !roomy
-    onModalChanged: drawerOpen = !modal
+    onModalChanged: drawerOpen = !modal && !collapsed
+    onCollapsedChanged: drawerOpen = !modal && !collapsed
+    // The toolbar's own button brings it back, which is to be remembered too.
+    onDrawerOpenChanged: {
+        if (!modal) {
+            collapsed = !drawerOpen
+        }
+    }
+    Component.onCompleted: drawerOpen = !modal && !collapsed
     width: Kirigami.Units.gridUnit * 15
+    // The toolbar's button that brings the sidebar back.
+    handleClosedIcon.name: "sidebar-expand-left"
+    handleOpenIcon.name: "sidebar-collapse-left"
+    handleClosedToolTip: i18nc("@info:tooltip", "Show Sidebar")
+    handleOpenToolTip: i18nc("@info:tooltip", "Hide Sidebar")
     collapsible: false
     leftPadding: 0
     rightPadding: 0
@@ -97,15 +113,45 @@ Kirigami.GlobalDrawer {
         }
     ]
 
-    footer: QQC2.ToolBar {
-        position: QQC2.ToolBar.Footer
+    // Slides into view while events are fetched, so that it shows that
+    // something is going on, and how far it has come.
+    footer: Item {
+        id: status
 
-        contentItem: RowLayout {
-            QQC2.ToolButton {
-                Layout.fillWidth: true
-                text: i18nc("@action:button", "Add Account…")
-                icon.name: "list-add"
-                onClicked: drawer.addAccountRequested()
+        readonly property bool wanted: Backend.syncing
+
+        implicitHeight: wanted ? bar.implicitHeight : 0
+        visible: implicitHeight > 0
+        clip: true
+
+        Behavior on implicitHeight {
+            NumberAnimation {
+                duration: Kirigami.Units.longDuration
+                easing.type: Easing.InOutQuad
+            }
+        }
+
+        QQC2.ToolBar {
+            id: bar
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            position: QQC2.ToolBar.Footer
+
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: i18nc("@info:progress", "Fetching events…")
+                    elide: Text.ElideRight
+                }
+                QQC2.ProgressBar {
+                    Layout.fillWidth: true
+                    indeterminate: Backend.syncProgress < 0
+                    value: Math.max(0, Backend.syncProgress)
+                }
             }
         }
     }

@@ -17,11 +17,19 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Synchronizing with the accounts' servers. Signing in to Google also needs
-  # it: the web browser hands the result to a port on this system.
+  # Synchronizing with the accounts' servers.
   - --share=network
   # The accounts' passwords.
   - --talk-name=org.kde.kwalletd6
+  # The Google accounts of the system's Online Accounts: which there are
+  # (only read), and the service that is signed in to them.
+  - --filesystem=xdg-config/libaccounts-glib:ro
+  - --talk-name=com.google.code.AccountsSSO.SingleSignOn
+  # Installing the plugin for the calendar of Plasma's clock, from the
+  # settings: a copy of the plugin, and the line that tells Plasma at login
+  # where to look for it.
+  - --filesystem=~/.local/lib/kalendar:create
+  - --filesystem=xdg-config/plasma-workspace/env:create
 
 cleanup:
   - /include
@@ -37,8 +45,6 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DBUILD_TESTING=OFF
-      # It would have to be installed in the system's Plasma, not in here.
-      - -DBUILD_PLASMA_PLUGIN=OFF
     sources:
       - type: dir
         path: ..

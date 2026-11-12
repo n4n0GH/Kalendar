@@ -31,6 +31,11 @@ public:
     /// Also removes the calendar's events.
     void removeCollection(const QString &id);
 
+    /// Between these two, changes are written down together, which takes a
+    /// fraction of the time that writing each down by itself does.
+    void begin();
+    void commit();
+
     QList<ItemRecord> items(const QString &collectionId) const;
     void saveItem(const ItemRecord &item);
     void removeItem(const QString &collectionId, const QString &href);

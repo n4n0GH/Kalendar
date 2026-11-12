@@ -61,7 +61,9 @@ bool Database::open(const QString &path, bool readOnly)
         // Proves that it is a database of ours, which opening alone does not.
         return run(u"SELECT count(*) FROM items"_s);
     }
-    return run(u"PRAGMA journal_mode = WAL"_s)
+    // "Normal" is as safe as can be with this kind of journal, short of
+    // waiting for the disk after every single change.
+    return run(u"PRAGMA journal_mode = WAL"_s) && run(u"PRAGMA synchronous = NORMAL"_s)
         && run(u"CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, type INTEGER NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, user TEXT NOT NULL)"_s)
         && run(u"CREATE TABLE IF NOT EXISTS collections (id TEXT PRIMARY KEY, account TEXT NOT NULL, url TEXT NOT NULL, name TEXT NOT NULL, "
                "color TEXT NOT NULL, ctag TEXT NOT NULL, enabled INTEGER NOT NULL, readonly INTEGER NOT NULL)"_s)
@@ -137,6 +139,16 @@ void Database::removeCollection(const QString &id)
 {
     run(u"DELETE FROM items WHERE collection = ?"_s, {id});
     run(u"DELETE FROM collections WHERE id = ?"_s, {id});
+}
+
+void Database::begin()
+{
+    m_db.transaction();
+}
+
+void Database::commit()
+{
+    m_db.commit();
 }
 
 QList<ItemRecord> Database::items(const QString &collectionId) const

@@ -184,7 +184,7 @@ QColor readColor(QString text)
 }
 
 DavClient::DavClient(QNetworkAccessManager *network, QObject *parent)
-    : QObject(parent)
+    : CalendarClient(parent)
     , m_network(network)
 {
 }

@@ -19,7 +19,7 @@ FocusScope {
     // Asks to show one day in full, because not all its events fit here.
     signal dayActivated(date date)
 
-    readonly property int firstDayOfWeek: Qt.locale().firstDayOfWeek
+    readonly property int firstDayOfWeek: Backend.firstDayOfWeek
     readonly property date gridStart: {
         const first = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
         return new Date(first.getFullYear(), first.getMonth(), 1 - (first.getDay() - firstDayOfWeek + 7) % 7)

@@ -6,14 +6,18 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-// Adds the calendars of a Google account, or of any server that speaks CalDAV.
+// Adds the calendars of a Google account that the system is signed in to,
+// or of any server that speaks CalDAV.
 Kirigami.Dialog {
     id: dialog
 
     property string errorText
+    // The Google accounts of the system's Online Accounts.
+    property var onlineAccounts: []
     readonly property bool google: googleChoice.checked
+    readonly property var chosenAccount: onlineAccounts[accountBox.currentIndex] ?? null
     readonly property bool complete: google
-        ? Backend.googleConfigured || (clientIdField.text.trim().length > 0 && clientSecretField.text.trim().length > 0)
+        ? chosenAccount !== null && !chosenAccount.added
         : serverField.text.trim().length > 0 && userField.text.trim().length > 0 && passwordField.text.length > 0
 
     function add(): void {
@@ -22,10 +26,21 @@ Kirigami.Dialog {
         }
         errorText = ""
         if (google) {
-            Backend.addGoogleAccount(clientIdField.text, clientSecretField.text)
+            Backend.addGoogleAccount(chosenAccount.id)
         } else {
             Backend.addCalDavAccount(serverField.text, userField.text, passwordField.text)
         }
+    }
+
+    function refresh(): void {
+        const chosen = chosenAccount?.id
+        onlineAccounts = Backend.onlineGoogleAccounts()
+        // Stays on the one chosen, or goes to the first that can be added.
+        let index = onlineAccounts.findIndex(account => account.id === chosen)
+        if (index < 0) {
+            index = Math.max(0, onlineAccounts.findIndex(account => !account.added))
+        }
+        accountBox.currentIndex = index
     }
 
     title: i18nc("@title:window", "Add Account")
@@ -43,9 +58,21 @@ Kirigami.Dialog {
     onOpened: {
         errorText = ""
         passwordField.text = ""
+        refresh()
     }
     // Closing while it is under way gives it up.
     onClosed: Backend.cancelAdding()
+
+    // Back from System Settings, there may be a new account.
+    Connections {
+        target: Qt.application
+
+        function onStateChanged(): void {
+            if (dialog.visible && Qt.application.state === Qt.ApplicationActive && !Backend.adding) {
+                dialog.refresh()
+            }
+        }
+    }
 
     Connections {
         target: Backend
@@ -88,7 +115,7 @@ Kirigami.Dialog {
                 Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 18
                 text: dialog.google
-                    ? i18nc("@info", "Signing in happens on Google’s page in the web browser. Kalendar does not see the password.")
+                    ? i18nc("@info", "Uses the Google accounts that this system is signed in to. Kalendar does not see the password.")
                     : i18nc("@info", "For Nextcloud, iCloud, Fastmail, and other services that offer CalDAV.")
                 wrapMode: Text.WordWrap
                 opacity: 0.75
@@ -96,41 +123,31 @@ Kirigami.Dialog {
 
             Kirigami.Separator {
                 Kirigami.FormData.isSection: true
-                visible: !dialog.google || !Backend.googleConfigured
             }
 
-            // Google only lets registered apps sign in. A build of Kalendar
-            // that has no registration of its own asks for one.
-            QQC2.TextField {
-                id: clientIdField
+            QQC2.ComboBox {
+                id: accountBox
 
-                Kirigami.FormData.label: i18nc("@label:textbox", "Client ID:")
+                Kirigami.FormData.label: i18nc("@label:listbox", "Account:")
                 Layout.fillWidth: true
-                visible: dialog.google && !Backend.googleConfigured
-                onAccepted: dialog.add()
+                visible: dialog.google && dialog.onlineAccounts.length > 0
+                model: dialog.onlineAccounts
+                textRole: "name"
             }
-            Kirigami.PasswordField {
-                id: clientSecretField
-
-                Kirigami.FormData.label: i18nc("@label:textbox", "Client secret:")
+            QQC2.Label {
                 Layout.fillWidth: true
-                visible: dialog.google && !Backend.googleConfigured
-                onAccepted: dialog.add()
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+                visible: dialog.google && (dialog.onlineAccounts.length === 0 || (dialog.chosenAccount?.added ?? false))
+                text: dialog.onlineAccounts.length === 0
+                    ? i18nc("@info", "This system is not signed in to a Google account yet.")
+                    : i18nc("@info", "The calendars of this account have been added before.")
+                wrapMode: Text.WordWrap
             }
-            RowLayout {
-                visible: dialog.google && !Backend.googleConfigured
-                spacing: Kirigami.Units.smallSpacing
-
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: Kirigami.Units.gridUnit * 18
-                    text: i18nc("@info", "This version of Kalendar is not registered with Google, so it needs a registration to sign in with.")
-                    wrapMode: Text.WordWrap
-                    opacity: 0.75
-                }
-                Kirigami.ContextualHelpButton {
-                    toolTipText: i18nc("@info", "In the Google Cloud console, create a project, switch on the “CalDAV API”, and create an OAuth client of the type “Desktop app”. Its client ID and client secret go here.")
-                }
+            QQC2.Button {
+                visible: dialog.google
+                text: i18nc("@action:button", "Open Online Accounts…")
+                icon.name: "applications-internet"
+                onClicked: Backend.openOnlineAccounts()
             }
 
             QQC2.TextField {
@@ -181,8 +198,7 @@ Kirigami.Dialog {
                 running: Backend.adding
             }
             QQC2.Label {
-                text: dialog.google ? i18nc("@info:progress", "Waiting for the sign-in in the web browser…")
-                    : i18nc("@info:progress", "Looking for calendars…")
+                text: i18nc("@info:progress", "Looking for calendars…")
             }
         }
     }

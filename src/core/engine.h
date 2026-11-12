@@ -73,6 +73,9 @@ public:
 
     /// Looks for the calendars at @p address without adding anything.
     void discover(const QUrl &address, const QByteArray &authorization, const std::function<void(const Discovery &)> &done);
+    /// The same for a Google account, where @p api is where Google's
+    /// Calendar API is (GoogleClient::api(), unless it is a test).
+    void discoverGoogle(const QUrl &api, const QByteArray &authorization, const std::function<void(const Discovery &)> &done);
     /// Adds an account with the calendars found for it and starts fetching
     /// their events. Gives the account's id, which is made up here unless
     /// @p account brings one.
@@ -83,6 +86,9 @@ public:
     void syncAll();
     void syncAccount(const QString &id);
     bool isSyncing() const;
+    /// How far the synchronization under way has come, from 0 to 1;
+    /// negative while that cannot be told yet, or none is under way.
+    double syncProgress() const;
     /// How many events were changed here and are not on their server yet.
     int pendingChanges() const;
 
@@ -119,6 +125,7 @@ Q_SIGNALS:
     /// Events were added, changed or removed, or calendars shown or hidden.
     void eventsChanged();
     void syncingChanged();
+    void syncProgressChanged();
     void errorsChanged();
     /// Something happened that could be missed, in words for the user.
     void notice(const QString &text);
@@ -155,8 +162,9 @@ private:
         bool wholeItem = false;
     };
 
+    void nameLocalAccount();
     Collection *findCollection(const QString &id);
-    DavClient *clientFor(const Account &account, const QByteArray &authorization);
+    CalendarClient *clientFor(const Account &account, const QByteArray &authorization);
     void setAccountError(const QString &accountId, const QString &error);
 
     void setItem(const QString &collectionId, const QString &href, const QString &etag, const QByteArray &ics, int dirty, bool store = true);
@@ -166,11 +174,11 @@ private:
     QVariantMap toVariant(const Occurrence &occurrence) const;
 
     void push(const QString &collectionId, const std::function<void()> &done = {});
-    void pushNext(const QString &collectionId, DavClient *client);
+    void pushNext(const QString &collectionId, CalendarClient *client);
     void pushFinished(const QString &collectionId);
     void load();
-    void resolveConflict(const QString &collectionId, const QString &href, DavClient *client);
-    void pull(const QString &collectionId, DavClient *client, const QString &ctag, const std::function<void()> &done);
+    void resolveConflict(const QString &collectionId, const QString &href, CalendarClient *client);
+    void pull(const QString &collectionId, CalendarClient *client, const QString &ctag, const std::function<void()> &done);
     void reconcile(const QString &accountId, const QList<CalendarInfo> &calendars);
     void syncFinished(const QString &accountId);
 
@@ -180,10 +188,13 @@ private:
     QList<Account> m_accounts;
     QList<Collection> m_collections;
     QHash<QString, State> m_state;
-    QHash<QString, DavClient *> m_clients;
+    QHash<QString, CalendarClient *> m_clients;
     QHash<QString, QString> m_errors;
     /// Accounts being synchronized, with the number of calendars still to do.
     QHash<QString, int> m_syncing;
+    /// The calendars of the synchronization under way: all, and those done.
+    int m_syncTotal = 0;
+    int m_syncDone = 0;
     Undo m_undo;
     int m_lastToken = 0;
     int m_undoPeriod = 10000;

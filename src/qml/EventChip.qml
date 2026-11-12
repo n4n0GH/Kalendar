@@ -16,7 +16,7 @@ QQC2.AbstractButton {
     property bool block: false
 
     readonly property bool filled: block || event.bar
-    readonly property string timeText: event.allDay ? "" : event.start.toLocaleTimeString(Qt.locale(), Locale.ShortFormat)
+    readonly property string timeText: event.allDay ? "" : Backend.formatTime(event.start, Backend.use24Hour)
     readonly property string description: {
         const locale = Qt.locale()
         let when
@@ -26,9 +26,10 @@ QQC2.AbstractButton {
                 : i18nc("@info a range of days", "%1 – %2", event.start.toLocaleDateString(locale, Locale.ShortFormat),
                     event.end.toLocaleDateString(locale, Locale.ShortFormat))
         } else {
-            when = i18nc("@info a range of times", "%1 – %2", event.start.toLocaleString(locale, Locale.ShortFormat),
-                event.start.toDateString() === event.end.toDateString() ? event.end.toLocaleTimeString(locale, Locale.ShortFormat)
-                    : event.end.toLocaleString(locale, Locale.ShortFormat))
+            const moment = time => i18nc("@info a day and a time of day", "%1 %2", time.toLocaleDateString(locale, Locale.ShortFormat),
+                Backend.formatTime(time, Backend.use24Hour))
+            when = i18nc("@info a range of times", "%1 – %2", moment(event.start),
+                event.start.toDateString() === event.end.toDateString() ? Backend.formatTime(event.end, Backend.use24Hour) : moment(event.end))
         }
         return event.location.length > 0 ? i18nc("@info time and place of an event", "%1, %2", when, event.location) : when
     }

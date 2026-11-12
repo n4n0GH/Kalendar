@@ -54,39 +54,38 @@ build/bin/kalendar
 
 ## In the calendar of Plasma's clock
 
-Kalendar comes with a plugin that shows its events in the calendar that opens from the clock in the panel. It is built
-when `kf6-kdeclarative-devel` is installed. It belongs to the system's Plasma, so it does not come with the Flatpak; it
-is installed from the source tree, and then also shows the events of a Kalendar that is installed as a Flatpak:
+Kalendar comes with a plugin that shows its events in the calendar that opens from the clock in the panel. It is
+installed from Kalendar itself: **Settings**, **Install Plugin**. That needs no administrator and works from the Flatpak
+too: a copy of the plugin goes to `~/.local/lib/kalendar/plugins`, and a line in
+`~/.config/plasma-workspace/env/kalendar-clock-plugin.sh` tells Plasma at login to look there. **Remove Plugin** takes
+both away again, and a newer Kalendar replaces the copy by itself.
+
+After logging out and in, switch it on: right-click the clock, **Configure Digital Clock…**, **Calendar**, and tick
+**Kalendar**.
+
+Plasma loads the plugin into itself, so a plugin from the Flatpak only works where the system's Qt and KDE Frameworks
+are at least as new as the Flatpak's, and where the system has KCalendarCore. Packagers can install it with the system
+instead (it is built when `kf6-kdeclarative-devel` is installed):
 
 ```sh
-cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-cmake --build build --target kalendarevents
 sudo cmake --install build --component plasmaplugin
 ```
-
-Then switch it on: right-click the clock, **Configure Digital Clock…**, **Calendar**, and tick **Kalendar**. Plasma has
-to be restarted once to find a new plugin (log out and in, or `systemctl --user restart plasma-plasmashell`).
 
 The plugin only reads. It shows the calendars that are shown in Kalendar, and follows changes made there by itself.
 Events from servers are as fresh as Kalendar's last synchronization, so Kalendar has to run now and then.
 
 ## Google accounts
 
-Google only lets registered apps sign in. Whoever distributes Kalendar registers it once:
+Kalendar uses the Google accounts that the system is signed in to: those under **Online Accounts** in System Settings.
+Signing in happens there, once for all apps; in Kalendar, **Add Account** then lists them. Kalendar never sees the
+password: it asks the system for a token each time it synchronizes.
 
-1. In the [Google Cloud console](https://console.cloud.google.com), create a project and enable the **CalDAV API**.
-2. Set up the OAuth consent screen with the scope `https://www.googleapis.com/auth/calendar`.
-3. Create an OAuth client of the type **Desktop app**.
-4. Build with its values:
+Such accounts may use Google's Calendar API but not its CalDAV, so that is what Kalendar speaks to Google
+(`src/core/googleclient.*`). Events still end up as calendar files like those of any other server.
 
-```sh
-cmake -B build -G Ninja -DKALENDAR_GOOGLE_CLIENT_ID=… -DKALENDAR_GOOGLE_CLIENT_SECRET=…
-```
-
-A build without these still offers Google, and asks for a client ID and secret when an account is added.
-
-Signing in happens on Google's page in the web browser (OAuth 2.0 with PKCE); Kalendar never sees the password. What it
-gets from Google to stay signed in, like the passwords of other accounts, is kept in KWallet.
+The Flatpak has no libraries for Online Accounts, so two things of the system are used directly
+(`src/onlineaccounts.*`): the list of accounts in `~/.config/libaccounts-glib/accounts.db`, which is only read, and the
+sign-in service (`signond`) on the session bus.
 
 ## Tests
 
@@ -109,9 +108,9 @@ a few example events, keeps its data apart (in `~/.qttest`), and leaves the wall
 
 | Path | What it holds |
 | --- | --- |
-| `src/core/` | Storage and synchronization, without any GUI: the database, the CalDAV client, and the engine that keeps both in step and lays events out for the views. |
+| `src/core/` | Storage and synchronization, without any GUI: the database, the clients for CalDAV and for Google's Calendar API, and the engine that keeps both in step and lays events out for the views. |
 | `src/backend.*` | What the interface asks of the calendars; adds the wallet and signing in. |
-| `src/googleauth.*`, `src/secretstore.*` | Signing in to Google; passwords in KWallet. |
+| `src/onlineaccounts.*`, `src/secretstore.*` | The Google accounts of the system's Online Accounts; passwords in KWallet. |
 | `src/qml/` | The interface. |
 | `src/plasma/` | The plugin for the calendar of Plasma's clock. |
 | `autotests/` | Tests for the above. |

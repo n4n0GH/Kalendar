@@ -63,35 +63,54 @@ struct FetchedItem {
     QByteArray ics;
 };
 
-/// Speaks CalDAV (RFC 4791): finds an account's calendars, lists and fetches
-/// their events, and stores and deletes them.
-class DavClient : public QObject
+/// What synchronizing needs from a server, whichever language it speaks.
+/// Events are told apart by an address ("href") and have a version ("etag")
+/// that changes whenever they do.
+class CalendarClient : public QObject
 {
     Q_OBJECT
 
 public:
     using Callback = std::function<void(const DavReply &)>;
 
-    explicit DavClient(QNetworkAccessManager *network, QObject *parent = nullptr);
+    using QObject::QObject;
 
     /// The value of the Authorization header, such as "Basic …" or "Bearer …".
-    void setAuthorization(const QByteArray &header);
+    virtual void setAuthorization(const QByteArray &header) = 0;
+    /// Lists the calendars of the account at @p home.
+    virtual void listCalendars(const QUrl &home, const std::function<void(const DavReply &, const QList<CalendarInfo> &)> &done) = 0;
+    /// Lists address and version of every event in @p collection.
+    virtual void listEtags(const QUrl &collection, const std::function<void(const DavReply &, const QHash<QString, QString> &)> &done) = 0;
+    /// Fetches the events at @p hrefs, which are full addresses.
+    virtual void fetch(const QUrl &collection, const QStringList &hrefs, const std::function<void(const DavReply &, const QList<FetchedItem> &)> &done) = 0;
+    /// Stores an event. With an empty @p etag it must be new; otherwise the
+    /// server's version must still be @p etag.
+    virtual void put(const QUrl &url, const QByteArray &ics, const QString &etag, const Callback &done) = 0;
+    virtual void remove(const QUrl &url, const QString &etag, const Callback &done) = 0;
+    /// Asks for the current version of one event.
+    virtual void etagOf(const QUrl &url, const Callback &done) = 0;
+};
+
+/// Speaks CalDAV (RFC 4791): finds an account's calendars, lists and fetches
+/// their events, and stores and deletes them.
+class DavClient : public CalendarClient
+{
+    Q_OBJECT
+
+public:
+    explicit DavClient(QNetworkAccessManager *network, QObject *parent = nullptr);
+
+    void setAuthorization(const QByteArray &header) override;
 
     /// Finds the calendars of the account at @p address, which may be the
     /// server's name alone, or any address at or above the calendars.
     void discover(const QUrl &address, const std::function<void(const Discovery &)> &done);
-    /// Lists the calendars in the calendar home @p home.
-    void listCalendars(const QUrl &home, const std::function<void(const DavReply &, const QList<CalendarInfo> &)> &done);
-    /// Lists address and version (etag) of every event in @p collection.
-    void listEtags(const QUrl &collection, const std::function<void(const DavReply &, const QHash<QString, QString> &)> &done);
-    /// Fetches the events at @p hrefs, which are full addresses.
-    void fetch(const QUrl &collection, const QStringList &hrefs, const std::function<void(const DavReply &, const QList<FetchedItem> &)> &done);
-    /// Stores an event. With an empty @p etag it must be new; otherwise the
-    /// server's version must still be @p etag.
-    void put(const QUrl &url, const QByteArray &ics, const QString &etag, const Callback &done);
-    void remove(const QUrl &url, const QString &etag, const Callback &done);
-    /// Asks for the current version (etag) of one event.
-    void etagOf(const QUrl &url, const Callback &done);
+    void listCalendars(const QUrl &home, const std::function<void(const DavReply &, const QList<CalendarInfo> &)> &done) override;
+    void listEtags(const QUrl &collection, const std::function<void(const DavReply &, const QHash<QString, QString> &)> &done) override;
+    void fetch(const QUrl &collection, const QStringList &hrefs, const std::function<void(const DavReply &, const QList<FetchedItem> &)> &done) override;
+    void put(const QUrl &url, const QByteArray &ics, const QString &etag, const Callback &done) override;
+    void remove(const QUrl &url, const QString &etag, const Callback &done) override;
+    void etagOf(const QUrl &url, const Callback &done) override;
 
     /// Reads a "multistatus" answer.
     static QList<DavResponse> parseMultiStatus(const QByteArray &xml);

@@ -15,8 +15,13 @@ Kirigami.ApplicationWindow {
     property date selectedDate: new Date()
     // "month", "week" or "day".
     property string viewMode: "month"
+    // How many days the agenda shows: 3 or 7.
+    property int agendaDays: 3
 
-    title: i18nc("@title:window", "Kalendar")
+    // What the calendar shows, such as “November 2026”, then the app's name.
+    title: pageStack.depth > 0 && pageStack.get(0)?.title
+        ? i18nc("@title:window %1 is what the calendar shows, such as “November 2026”", "%1 — Kalendar", pageStack.get(0).title)
+        : i18nc("@title:window", "Kalendar")
     width: Kirigami.Units.gridUnit * 60
     height: Kirigami.Units.gridUnit * 38
     minimumWidth: Kirigami.Units.gridUnit * 18
@@ -26,6 +31,8 @@ Kirigami.ApplicationWindow {
         property alias width: root.width
         property alias height: root.height
         property alias viewMode: root.viewMode
+        property alias agendaDays: root.agendaDays
+        property alias sidebarCollapsed: sidebar.collapsed
     }
 
     // A new event on the selected day: in an hour from now if that is today,
@@ -46,6 +53,11 @@ Kirigami.ApplicationWindow {
         eventDialog.openNew(start, allDay)
     }
 
+    // An event is read first; changing it is a step further.
+    function showEvent(event: var): void {
+        eventViewDialog.openFor(event)
+    }
+
     function editEvent(event: var): void {
         eventDialog.openFor(event)
     }
@@ -63,9 +75,9 @@ Kirigami.ApplicationWindow {
         addAccountDialog.open()
     }
 
-    function showAccounts(): void {
-        if (!(pageStack.layers.currentItem instanceof AccountsPage)) {
-            pageStack.layers.push(accountsPage)
+    function showSettings(): void {
+        if (!(pageStack.layers.currentItem instanceof SettingsPage)) {
+            pageStack.layers.push(settingsPage)
         }
     }
 
@@ -76,23 +88,25 @@ Kirigami.ApplicationWindow {
     }
 
     globalDrawer: Sidebar {
+        id: sidebar
+
         selectedDate: root.selectedDate
         onDateChosen: date => root.selectedDate = date
-        onAddAccountRequested: root.addAccount()
     }
 
     pageStack.initialPage: CalendarPage {
+        sidebar: sidebar
         selectedDate: root.selectedDate
         viewMode: root.viewMode
+        agendaDays: root.agendaDays
         onDateSelected: date => root.selectedDate = date
         onViewModeRequested: mode => root.viewMode = mode
     }
 
     Component {
-        id: accountsPage
+        id: settingsPage
 
-        AccountsPage {
-            onAddAccountRequested: root.addAccount()
+        SettingsPage {
         }
     }
 
@@ -102,6 +116,12 @@ Kirigami.ApplicationWindow {
         Kirigami.AboutPage {
             aboutData: KCoreAddons.AboutData
         }
+    }
+
+    EventViewDialog {
+        id: eventViewDialog
+
+        onEditRequested: event => root.editEvent(event)
     }
 
     EventDialog {

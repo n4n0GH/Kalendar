@@ -36,6 +36,19 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-11-12">
+      <description>
+        <p>Google calendars now come from the Google accounts of the system’s Online Accounts, and a lot was added around them:</p>
+        <ul>
+          <li>An agenda view of the next three or seven days</li>
+          <li>A click on an event shows it to read, with notes written as HTML shown as such; editing is one step further</li>
+          <li>Settings: accounts, 12 or 24 hours, the first day of the week, week numbers in the sidebar</li>
+          <li>The plugin for the calendar of Plasma’s clock can be installed from the settings</li>
+          <li>The sidebar can be put away, and shows when events are being fetched</li>
+          <li>Fetching events is several times faster</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-12">
       <description>
         <p>The first version: month, week and day views, and calendars from Google and from any service that offers CalDAV.</p>

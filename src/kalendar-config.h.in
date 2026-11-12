@@ -1,7 +1,0 @@
-// SPDX-FileCopyrightText: 2026 Kalendar contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-#pragma once
-
-#define KALENDAR_GOOGLE_CLIENT_ID "@KALENDAR_GOOGLE_CLIENT_ID@"
-#define KALENDAR_GOOGLE_CLIENT_SECRET "@KALENDAR_GOOGLE_CLIENT_SECRET@"

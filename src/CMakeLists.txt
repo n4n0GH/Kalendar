@@ -9,6 +9,8 @@ add_library(kalendarcore STATIC
     core/davclient.h
     core/engine.cpp
     core/engine.h
+    core/googleclient.cpp
+    core/googleclient.h
     core/types.h
 )
 # It also goes into a plugin.
@@ -20,14 +22,14 @@ target_link_libraries(kalendarcore
     PRIVATE KF6::I18n
 )
 
-configure_file(kalendar-config.h.in ${CMAKE_CURRENT_BINARY_DIR}/kalendar-config.h @ONLY)
-
 add_executable(kalendar
     main.cpp
     backend.cpp
     backend.h
-    googleauth.cpp
-    googleauth.h
+    clockplugin.cpp
+    clockplugin.h
+    onlineaccounts.cpp
+    onlineaccounts.h
     secretstore.cpp
     secretstore.h
 )
@@ -46,19 +48,22 @@ ecm_target_qml_sources(kalendar SOURCES
     qml/MonthView.qml
     qml/WeekView.qml
     qml/EventChip.qml
+    qml/CalendarLabel.qml
     qml/MiniMonth.qml
     qml/DateButton.qml
     qml/TimeField.qml
     qml/EventDialog.qml
-    qml/AccountsPage.qml
+    qml/EventViewDialog.qml
+    qml/SettingsPage.qml
     qml/AddAccountDialog.qml
 )
 
 target_include_directories(kalendar PRIVATE ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_definitions(kalendar PRIVATE TRANSLATION_DOMAIN="kalendar")
+target_compile_definitions(kalendar PRIVATE TRANSLATION_DOMAIN="kalendar" KALENDAR_PLUGIN_DIR="${KDE_INSTALL_FULL_PLUGINDIR}")
 target_link_libraries(kalendar PRIVATE
     kalendarcore
     Qt6::Core
+    Qt6::DBus
     Qt6::Gui
     Qt6::Network
     Qt6::Qml

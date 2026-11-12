@@ -4,6 +4,8 @@
 #include "backend.h"
 #include "engine.h"
 #include "kalendar-version.h"
+#include "clockplugin.h"
+#include "onlineaccounts.h"
 #include "secretstore.h"
 
 #include <KAboutData>
@@ -115,8 +117,11 @@ int main(int argc, char **argv)
         return 1;
     }
     SecretStore secrets(testMode);
-    Backend backend(&engine, &secrets);
+    OnlineAccounts online(testMode);
+    Backend backend(&engine, &secrets, &online);
     Backend::setInstance(&backend);
+    // An installed plugin is to be of this version of Kalendar.
+    ClockPlugin().refresh();
 
     QQmlApplicationEngine qml;
     KLocalization::setupLocalizedContext(&qml);

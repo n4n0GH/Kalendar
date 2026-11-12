@@ -9,7 +9,7 @@
 #include <QDateTime>
 #include <QQmlEngine>
 
-class GoogleAuth;
+class OnlineAccounts;
 class QTimer;
 class SecretStore;
 
@@ -59,21 +59,29 @@ class Backend : public QObject
     /// they lay themselves out again.
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
     Q_PROPERTY(bool syncing READ isSyncing NOTIFY syncingChanged)
+    /// How far the synchronization has come, from 0 to 1; negative while
+    /// that cannot be told.
+    Q_PROPERTY(double syncProgress READ syncProgress NOTIFY syncProgressChanged)
     /// Why the calendars may be out of date; empty when all is well.
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorTextChanged)
     /// Whether an account is being added right now.
     Q_PROPERTY(bool adding READ isAdding NOTIFY addingChanged)
-    /// Whether this build has what signing in to Google needs. Otherwise the
-    /// user has to supply a client ID and secret.
-    Q_PROPERTY(bool googleConfigured READ isGoogleConfigured CONSTANT)
+    /// Whether times of day are written with 24 hours ("14:30") rather than
+    /// twice 12 ("2:30 PM"). As is usual in the user's language, until set.
+    Q_PROPERTY(bool use24Hour READ use24Hour WRITE setUse24Hour NOTIFY use24HourChanged)
+    /// The day weeks start on, counted like JavaScript does: 0 is Sunday,
+    /// 1 Monday. As is usual in the user's country, until set.
+    Q_PROPERTY(int firstDayOfWeek READ firstDayOfWeek WRITE setFirstDayOfWeek NOTIFY firstDayOfWeekChanged)
+    /// Whether the small month in the sidebar numbers its weeks.
+    Q_PROPERTY(bool showWeekNumbers READ showWeekNumbers WRITE setShowWeekNumbers NOTIFY showWeekNumbersChanged)
     /// The calendar new events go to unless another is chosen.
     Q_PROPERTY(QString defaultCalendarId READ defaultCalendarId NOTIFY writableCalendarsChanged)
-    /// The calendars that events can be added to, each with id, name, color
-    /// and accountName.
+    /// The calendars that events can be added to, each with id, name, color,
+    /// accountName and source (where it is kept, such as "Local").
     Q_PROPERTY(QVariantList writableCalendars READ writableCalendars NOTIFY writableCalendarsChanged)
 
 public:
-    explicit Backend(Engine *engine, SecretStore *secrets, QObject *parent = nullptr);
+    explicit Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, QObject *parent = nullptr);
     /// There is one Backend, made in main().
     static Backend *create(QQmlEngine *, QJSEngine *);
     static void setInstance(Backend *backend);
@@ -82,9 +90,15 @@ public:
     QVariantList accounts() const;
     int revision() const;
     bool isSyncing() const;
+    double syncProgress() const;
+    bool use24Hour() const;
+    void setUse24Hour(bool use);
+    int firstDayOfWeek() const;
+    void setFirstDayOfWeek(int day);
+    bool showWeekNumbers() const;
+    void setShowWeekNumbers(bool show);
     QString errorText() const;
     bool isAdding() const;
-    bool isGoogleConfigured() const;
     QString defaultCalendarId() const;
     QVariantList writableCalendars() const;
 
@@ -102,11 +116,26 @@ public:
 
     /// The result arrives as accountAdded() or accountFailed().
     Q_INVOKABLE void addCalDavAccount(const QString &server, const QString &user, const QString &password);
-    /// Empty arguments mean: use what this build has.
-    Q_INVOKABLE void addGoogleAccount(const QString &clientId, const QString &clientSecret);
+    /// The Google accounts set up under Online Accounts in System Settings,
+    /// each with id, name, and added (whether its calendars are here already).
+    Q_INVOKABLE QVariantList onlineGoogleAccounts() const;
+    /// Adds the calendars of one of onlineGoogleAccounts().
+    Q_INVOKABLE void addGoogleAccount(int onlineId);
+    /// Shows Online Accounts in System Settings, where signing in is done.
+    Q_INVOKABLE void openOnlineAccounts();
     Q_INVOKABLE void cancelAdding();
     Q_INVOKABLE void removeAccount(const QString &id);
 
+    /// The time of day of @p time in words. @p use24Hour is to be the
+    /// property of that name, which makes a binding ask again when it changes.
+    Q_INVOKABLE QString formatTime(const QDateTime &time, bool use24Hour) const;
+    /// The notes of an event, made fit to show: as rich text that holds
+    /// nothing but harmless formatting and links. Notes written as HTML
+    /// (which Google does) keep their formatting; in plain notes, line
+    /// breaks are kept and addresses become links.
+    Q_INVOKABLE QString renderNotes(const QString &notes) const;
+    /// Whether @p notes are written as HTML.
+    Q_INVOKABLE bool isHtml(const QString &notes) const;
     /// The time of day @p text names, as typed by the user ("9", "9:30",
     /// "2 pm"); invalid if it names none.
     Q_INVOKABLE QDateTime parseTime(const QString &text, const QDateTime &day) const;
@@ -117,6 +146,10 @@ Q_SIGNALS:
     void accountsChanged();
     void revisionChanged();
     void syncingChanged();
+    void syncProgressChanged();
+    void use24HourChanged();
+    void firstDayOfWeekChanged();
+    void showWeekNumbersChanged();
     void errorTextChanged();
     void addingChanged();
     void writableCalendarsChanged();
@@ -133,7 +166,7 @@ private:
 
     Engine *const m_engine;
     SecretStore *const m_secrets;
-    GoogleAuth *const m_google;
+    OnlineAccounts *const m_online;
     CalendarListModel *const m_calendars;
     QTimer *const m_timer;
     int m_revision = 0;

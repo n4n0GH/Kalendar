@@ -239,15 +239,54 @@ Kirigami.Dialog {
                 opacity: 0.75
             }
 
-            QQC2.ComboBox {
+            // Each calendar with its color and where it is kept, as calendars
+            // of different accounts often have the same name.
+            RowLayout {
                 Kirigami.FormData.label: i18nc("@label:listbox which calendar an event is kept in", "Calendar:")
+                Kirigami.FormData.buddyFor: calendarBox
                 Layout.fillWidth: true
-                visible: !dialog.readOnly && count > 1
-                textRole: "name"
-                valueRole: "id"
-                model: Backend.writableCalendars
-                currentIndex: Math.max(0, indexOfValue(dialog.calendarId))
-                onActivated: dialog.calendarId = currentValue
+                visible: !dialog.readOnly && calendarBox.count > 1
+                spacing: Kirigami.Units.smallSpacing
+
+                Rectangle {
+                    implicitWidth: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+                    implicitHeight: implicitWidth
+                    radius: height / 2
+                    color: calendarBox.current?.color ?? "transparent"
+                }
+                QQC2.ComboBox {
+                    id: calendarBox
+
+                    readonly property var current: model[currentIndex] ?? null
+
+                    Layout.fillWidth: true
+                    textRole: "name"
+                    valueRole: "id"
+                    model: Backend.writableCalendars
+                    currentIndex: Math.max(0, indexOfValue(dialog.calendarId))
+                    displayText: current ? i18nc("@item:inlistbox %1 is the name of a calendar, %2 where it is kept, such as “Local”",
+                        "%1 (%2)", current.name, current.source) : ""
+                    onActivated: dialog.calendarId = currentValue
+
+                    delegate: QQC2.ItemDelegate {
+                        id: choice
+
+                        required property var modelData
+                        required property int index
+
+                        width: parent?.width ?? 0
+                        text: modelData.name
+                        highlighted: calendarBox.highlightedIndex === index
+                        Accessible.description: modelData.source
+
+                        contentItem: CalendarLabel {
+                            name: choice.modelData.name
+                            source: choice.modelData.source
+                            calendarColor: choice.modelData.color
+                            highlighted: choice.highlighted
+                        }
+                    }
+                }
             }
 
             QQC2.TextField {

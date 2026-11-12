@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(kalendar VERSION 0.1.0 LANGUAGES CXX)
+project(kalendar VERSION 0.2.0 LANGUAGES CXX)
 
 set(QT_MIN_VERSION "6.6.0")
 set(KF_MIN_VERSION "6.8.0")
@@ -28,14 +28,9 @@ ecm_setup_version(${PROJECT_VERSION}
     VERSION_HEADER ${CMAKE_CURRENT_BINARY_DIR}/kalendar-version.h
 )
 
-# Signing in to Google needs an OAuth client of type "Desktop app", which
-# whoever distributes Kalendar registers at https://console.cloud.google.com
-# (enable the "CalDAV API"). Without these, the user is asked for one.
-set(KALENDAR_GOOGLE_CLIENT_ID "" CACHE STRING "OAuth client ID for Google accounts")
-set(KALENDAR_GOOGLE_CLIENT_SECRET "" CACHE STRING "OAuth client secret for Google accounts")
-
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
     Core
+    DBus
     Gui
     Network
     Qml
