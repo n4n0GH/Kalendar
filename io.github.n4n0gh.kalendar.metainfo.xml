@@ -36,6 +36,11 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.2" date="2026-11-13">
+      <description>
+        <p>Installed as a Flatpak, Kalendar follows the colors of the desktop when they change while it runs, such as on a switch between a light and a dark theme. Before, parts of the window kept the old colors until Kalendar was started again.</p>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-11-13">
       <description>
         <p>The small month stays in place in the sidebar: only the list of calendars scrolls when the window is too low to show all of them.</p>
