@@ -36,6 +36,17 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.0" date="2026-11-13">
+      <description>
+        <p>Calendar files can be imported, and the calendar of Plasma’s clock opens without a delay:</p>
+        <ul>
+          <li>Calendar files (.ics) are imported from the menu, by dropping them on the window, or by opening them from the file manager; a dialog shows what they hold and asks which calendar the events go to</li>
+          <li>Kalendar can be chosen as the system’s calendar application, which the Add button of Plasma’s clock opens</li>
+          <li>Kalendar runs only once: starting it again brings its window to the front</li>
+          <li>The plugin for the calendar of Plasma’s clock no longer makes the calendar open with a delay. If you installed the plugin, start Kalendar once after updating: that replaces it</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-11-12">
       <description>
         <p>The plugin for the calendar of Plasma’s clock no longer freezes the panel and the desktop once it is switched on. If you installed the plugin, start Kalendar once after updating: that replaces it.</p>
