@@ -36,6 +36,17 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.4.0" date="2026-11-13">
+      <description>
+        <p>The agenda is the view Kalendar opens with, and shows a day at a glance:</p>
+        <ul>
+          <li>The agenda lists the next three or seven days one below the other, each with its events stacked beside it, so that an event late in the evening is seen without scrolling</li>
+          <li>The arrows in the toolbar go to the days before and after those the agenda shows</li>
+          <li>The view of one day is gone; the agenda takes its place</li>
+          <li>A right click on the calendar offers to make an event there, in every view</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-13">
       <description>
         <p>Calendar files can be imported, and the calendar of Plasma’s clock opens without a delay:</p>
