@@ -105,6 +105,8 @@ private Q_SLOTS:
         // New events go to the calendar used last.
         QCOMPARE(backend.defaultCalendarId(), calendar);
         QCOMPARE(backend.dayLayout(start.date(), 0).size(), 1);
+        // The small month marks the day, and no other.
+        QCOMPARE(backend.busyDays(start.date().addDays(-1), 3, 0), QVariantList({false, true, false}));
 
         // Deleting, and taking it back.
         const QVariantMap event = backend.dayLayout(start.date(), 0).first().toMap();

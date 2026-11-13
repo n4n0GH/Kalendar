@@ -211,27 +211,6 @@ Kirigami.Page {
         sourceComponent: page.viewMode === "month" ? monthView : page.viewMode === "week" ? weekView : agendaView
     }
 
-    // What a right click on the calendar brings up.
-    QQC2.Menu {
-        id: contextMenu
-
-        // Makes the event where the click was.
-        property var create: null
-
-        QQC2.MenuItem {
-            action: Kirigami.Action {
-                text: i18nc("@action:inmenu", "New Event…")
-                icon.name: "appointment-new"
-                onTriggered: contextMenu.create()
-            }
-        }
-    }
-
-    function showContextMenu(create: var): void {
-        contextMenu.create = create
-        contextMenu.popup()
-    }
-
     Component {
         id: monthView
 
@@ -243,7 +222,7 @@ Kirigami.Page {
                 page.dateSelected(date)
                 applicationWindow().newEvent()
             }
-            onMenuRequested: date => page.showContextMenu(() => applicationWindow().newEvent())
+            onMenuRequested: date => applicationWindow().showContextMenu(() => applicationWindow().newEvent())
             onEventActivated: event => applicationWindow().showEvent(event)
             // The agenda from that day on has room for all its events.
             onDayActivated: date => {
@@ -261,7 +240,7 @@ Kirigami.Page {
             dayCount: page.agendaDays
             // The agenda starts at the selected day, and is to stay where it is.
             onNewEventRequested: date => applicationWindow().newEventOn(date)
-            onMenuRequested: date => page.showContextMenu(() => applicationWindow().newEventOn(date))
+            onMenuRequested: date => applicationWindow().showContextMenu(() => applicationWindow().newEventOn(date))
             onEventActivated: event => applicationWindow().showEvent(event)
         }
     }
@@ -276,7 +255,7 @@ Kirigami.Page {
                 page.dateSelected(start)
                 applicationWindow().newEventAt(start, allDay)
             }
-            onMenuRequested: (start, allDay) => page.showContextMenu(() => {
+            onMenuRequested: (start, allDay) => applicationWindow().showContextMenu(() => {
                 page.dateSelected(start)
                 applicationWindow().newEventAt(start, allDay)
             })

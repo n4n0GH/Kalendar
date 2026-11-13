@@ -90,6 +90,12 @@ QVariant CalendarListModel::data(const QModelIndex &index, int role) const
         const Account *account = m_engine->account(collection->accountId);
         return account ? account->name : QString();
     }
+    case AccountIdRole:
+        return collection->accountId;
+    case AccountKindRole: {
+        const Account *account = m_engine->account(collection->accountId);
+        return !account || account->type == Account::Local ? u"local"_s : account->type == Account::Google ? u"google"_s : u"caldav"_s;
+    }
     case FirstOfAccountRole: {
         const Collection *previous = index.row() > 0 ? m_engine->collection(m_ids.at(index.row() - 1)) : nullptr;
         return !previous || previous->accountId != collection->accountId;
@@ -106,6 +112,8 @@ QHash<int, QByteArray> CalendarListModel::roleNames() const
         {ColorRole, "calendarColor"},
         {ShownRole, "shown"},
         {AccountNameRole, "accountName"},
+        {AccountIdRole, "accountId"},
+        {AccountKindRole, "accountKind"},
         {FirstOfAccountRole, "firstOfAccount"},
     };
 }
@@ -264,6 +272,22 @@ QVariantMap Backend::weekLayout(const QDate &start, int days, bool barsOnly, int
 QVariantList Backend::dayLayout(const QDate &day, int) const
 {
     return m_engine->dayLayout(day);
+}
+
+QVariantList Backend::busyDays(const QDate &start, int days, int) const
+{
+    QList<bool> busy(std::max(days, 0), false);
+    if (!start.isValid() || busy.isEmpty()) {
+        return {};
+    }
+    for (const Occurrence &occurrence : m_engine->occurrences(start, start.addDays(days - 1))) {
+        const int first = std::max<qint64>(0, start.daysTo(occurrence.firstDay));
+        const int last = std::min<qint64>(days - 1, start.daysTo(occurrence.lastDay));
+        for (int day = first; day <= last; ++day) {
+            busy[day] = true;
+        }
+    }
+    return QVariantList(busy.cbegin(), busy.cend());
 }
 
 QString Backend::saveEvent(const QVariantMap &data)

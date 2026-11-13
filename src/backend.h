@@ -27,6 +27,9 @@ public:
         ColorRole,
         ShownRole,
         AccountNameRole,
+        AccountIdRole,
+        /// "local", "caldav" or "google".
+        AccountKindRole,
         /// Whether this is the first calendar of its account in the list.
         FirstOfAccountRole,
     };
@@ -107,6 +110,8 @@ public:
     /// name is what makes a binding ask again when events change.
     Q_INVOKABLE QVariantMap weekLayout(const QDate &start, int days, bool barsOnly, int maxLanes, int revision) const;
     Q_INVOKABLE QVariantList dayLayout(const QDate &day, int revision) const;
+    /// For each of @p days days from @p start, whether it has an event.
+    Q_INVOKABLE QVariantList busyDays(const QDate &start, int days, int revision) const;
     /// Gives an error message, or an empty string.
     Q_INVOKABLE QString saveEvent(const QVariantMap &data);
     /// Gives a token for undo(), or 0 if nothing was deleted.

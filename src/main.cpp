@@ -30,6 +30,22 @@ using namespace Qt::StringLiterals;
 
 namespace
 {
+/// Tells the window when the pointer leaves it, which QML has no word for:
+/// that is all a window gets to know of a click on its title bar.
+class PointerWatcher : public QObject
+{
+public:
+    using QObject::QObject;
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::Leave) {
+            QMetaObject::invokeMethod(watched, "dismissMenu");
+        }
+        return false;
+    }
+};
+
 /// For trying things out and for taking pictures of the app, with
 /// KALENDAR_TEST_MODE set: nothing of the user's is touched then.
 ///   KALENDAR_DEMO        fills the calendar with a few events around today
@@ -152,6 +168,10 @@ int main(int argc, char **argv)
         },
         Qt::QueuedConnection);
     qml.loadFromModule("io.github.n4n0gh.kalendar", "Main");
+
+    if (QObject *window = qml.rootObjects().value(0)) {
+        window->installEventFilter(new PointerWatcher(window));
+    }
 
     QObject::connect(&instance, &SingleInstance::activated, &app, [&qml](const QString &token) {
         if (auto *window = qobject_cast<QQuickWindow *>(qml.rootObjects().value(0))) {

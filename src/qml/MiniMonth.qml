@@ -6,7 +6,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-// One small month to pick a day from.
+// One small month to pick a day from. Days that have events are marked.
 ColumnLayout {
     id: mini
 
@@ -15,6 +15,8 @@ ColumnLayout {
     property date shownMonth: selectedDate
 
     signal dateChosen(date date)
+    // Asks for the menu that a right click on a day brings up.
+    signal menuRequested(date date)
 
     readonly property int firstDayOfWeek: Backend.firstDayOfWeek
     readonly property date gridStart: {
@@ -22,6 +24,9 @@ ColumnLayout {
         return new Date(first.getFullYear(), first.getMonth(), 1 - (first.getDay() - firstDayOfWeek + 7) % 7)
     }
     readonly property real cellSize: Kirigami.Units.gridUnit + Kirigami.Units.largeSpacing
+    // Which of the 42 days have an event. Handing in the revision has this
+    // asked again whenever events change.
+    readonly property var busy: Backend.busyDays(gridStart, 42, Backend.revision)
 
     // The number of the week @p day is in, counted as the standard (ISO 8601)
     // does: weeks belong to the year their Thursday is in.
@@ -132,13 +137,20 @@ ColumnLayout {
                 readonly property bool isSelected: date.toDateString() === mini.selectedDate.toDateString()
                 readonly property bool isToday: date.toDateString() === new Date().toDateString()
                 readonly property bool inMonth: date.getMonth() === mini.shownMonth.getMonth()
+                readonly property bool isBusy: mini.busy[index] ?? false
 
                 width: mini.cellSize
                 height: mini.cellSize
                 hoverEnabled: true
                 text: date.getDate()
-                Accessible.name: date.toLocaleDateString(Qt.locale(), Locale.LongFormat)
+                Accessible.name: isBusy ? i18nc("@info accessible name of a day that has events, %1 is a date", "%1, has events",
+                    date.toLocaleDateString(Qt.locale(), Locale.LongFormat)) : date.toLocaleDateString(Qt.locale(), Locale.LongFormat)
                 onClicked: mini.dateChosen(date)
+
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: mini.menuRequested(day.date)
+                }
 
                 background: Rectangle {
                     radius: height / 2
@@ -154,6 +166,18 @@ ColumnLayout {
                     color: day.isSelected ? Kirigami.Theme.highlightedTextColor
                         : day.isToday ? Kirigami.Theme.activeTextColor
                         : day.inMonth ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
+
+                    // A dot below the number: something is on that day.
+                    Rectangle {
+                        visible: day.isBusy
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: Kirigami.Units.smallSpacing / 2
+                        width: Kirigami.Units.smallSpacing
+                        height: width
+                        radius: height / 2
+                        color: parent.color
+                    }
                 }
             }
         }

@@ -40,6 +40,7 @@ Kirigami.ApplicationWindow {
         property alias viewMode: root.viewMode
         property alias agendaDays: root.agendaDays
         property alias sidebarCollapsed: sidebar.collapsed
+        property alias foldedAccounts: sidebar.foldedAccounts
     }
 
     // A new event on the selected day: in an hour from now if that is today,
@@ -62,6 +63,25 @@ Kirigami.ApplicationWindow {
             return
         }
         eventDialog.openNew(start, allDay)
+    }
+
+    // What a right click on a day brings up; @p create makes the event there.
+    function showContextMenu(create: var): void {
+        contextMenu.create = create
+        contextMenu.popup()
+    }
+
+    // The menu is drawn inside the window, which hears nothing of clicks on
+    // its title bar or on other windows. So it goes when the pointer leaves
+    // the window (main.cpp tells) and when another window is worked in.
+    function dismissMenu(): void {
+        contextMenu.dismiss()
+    }
+
+    onActiveChanged: {
+        if (!active) {
+            dismissMenu()
+        }
     }
 
     // An event is read first; changing it is a step further.
@@ -117,6 +137,7 @@ Kirigami.ApplicationWindow {
 
         selectedDate: root.selectedDate
         onDateChosen: date => root.selectedDate = date
+        onMenuRequested: date => root.showContextMenu(() => root.newEventOn(date))
     }
 
     pageStack.initialPage: CalendarPage {
@@ -140,6 +161,20 @@ Kirigami.ApplicationWindow {
 
         Kirigami.AboutPage {
             aboutData: KCoreAddons.AboutData
+        }
+    }
+
+    QQC2.Menu {
+        id: contextMenu
+
+        property var create: null
+
+        QQC2.MenuItem {
+            action: Kirigami.Action {
+                text: i18nc("@action:inmenu", "New Event…")
+                icon.name: "appointment-new"
+                onTriggered: contextMenu.create()
+            }
         }
     }
 

@@ -42,8 +42,8 @@ created once in `Main.qml` and opened through functions of the window:
 | File | What it is |
 | --- | --- |
 | `Main.qml` | The window: state, dialogs, the functions pages call |
-| `Sidebar.qml` | The global drawer: small month, calendars, the bar that shows fetching |
-| `MiniMonth.qml` | The small month, with week numbers if wanted |
+| `Sidebar.qml` | The global drawer: small month, calendars in groups by account that fold away, the bar that shows fetching |
+| `MiniMonth.qml` | The small month, with a dot on days that have events (`Backend.busyDays()`), and week numbers if wanted |
 | `CalendarPage.qml` | The one page: toolbar, and the view for the mode |
 | `MonthView.qml` | Six weeks, each laid out by `Backend.weekLayout()` |
 | `AgendaView.qml` | The selected day and those after it, one below the other, each with its events stacked |
@@ -114,8 +114,12 @@ stays where it is (`newEventOn()`).
 *New Event* in the toolbar makes one on the selected day. A double click
 makes one where it was: on a day in the month and in the agenda, at a
 time in the week. A right click in any view brings up a menu with *New
-Event…* for the same place (`menuRequested()` of the views,
-`showContextMenu()` in `CalendarPage.qml`).
+Event…* for the same place, and so does a right click on a day of the small
+month in the sidebar (`menuRequested()` of the views, `showContextMenu()` in
+`Main.qml`). The menu is drawn inside the window, which hears nothing of
+clicks on its title bar, so it is also closed when the pointer leaves the
+window (`PointerWatcher` in `main.cpp`) and when the window is no longer the
+active one.
 
 ## QML conventions that bite
 
@@ -147,7 +151,7 @@ Event…* for the same place (`menuRequested()` of the views,
 
 | Setting | Where it lives |
 | --- | --- |
-| Window size, view mode, agenda length, sidebar put away | `Settings` in `Main.qml` |
+| Window size, view mode, agenda length, sidebar put away, accounts folded away in the sidebar | `Settings` in `Main.qml` |
 | 12 or 24 hours, first day of the week, week numbers | Properties of `Backend`, in `QSettings` |
 | The calendar used last for a new event | `Backend`, in `QSettings` |
 | Which calendars are shown | The database (`collections.enabled`) |
