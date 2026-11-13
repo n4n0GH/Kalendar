@@ -36,6 +36,17 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.0" date="2026-11-13">
+      <description>
+        <p>The sidebar is tidier and tells more:</p>
+        <ul>
+          <li>The calendars of an account can be folded away with a click on its name, and each account has a small icon that says what kind it is</li>
+          <li>The small month marks the days that have events with a dot</li>
+          <li>A right click on a day of the small month offers to make an event on it</li>
+          <li>The menu of a right click closes when the title bar or another window is clicked</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-11-13">
       <description>
         <p>The agenda is the view Kalendar opens with, and shows a day at a glance:</p>
