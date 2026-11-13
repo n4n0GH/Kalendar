@@ -19,10 +19,22 @@ Kalendar's database read-only through the same `Engine` the app uses
 calendars that are shown in Kalendar. An event that takes several days is
 listed on each of them.
 
-It watches the database file and reads it again a moment after it changes, so
-it follows Kalendar by itself. If the days that are shown differ then, it
-takes all its events back and hands them over anew; if they do not, Plasma
-hears nothing.
+Opening the database means reading every event there is, which takes a
+moment (a tenth of a second for two thousand events), and Plasma asks often:
+twice whenever the calendar is opened, and for every month that is shown.
+So the shell is never kept waiting for it:
+
+- A thread of its own does the reading (`Reader`). `loadEventsForDateRange()`
+  returns at once and the events follow with `dataReady()`.
+- The reader keeps the database as it read it, and reads it again only when
+  the files have another size or time of change than they had then.
+- Plasma drops what it has every time it asks, so only the last question is
+  answered: an answer to an earlier one would come on top of it.
+
+The plugin also watches the database file and asks the reader again a moment
+after it changes, so it follows Kalendar by itself. If the days that are shown
+differ then, it takes all its events back and hands them over anew; if they do
+not, Plasma hears nothing.
 
 Plasma (6.8 at least) builds its calendar anew for every event a plugin takes
 back (`eventRemoved()`), one after the other and slower each time: a few dozen

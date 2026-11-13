@@ -28,10 +28,46 @@ QString databasePath()
 }
 }
 
+/// Lives in the plugin's thread, where reading may take its time: opening
+/// the database means reading every event there is.
+class KalendarEventsPlugin::Reader : public QObject
+{
+public:
+    explicit Reader(const QString &database)
+        : m_database(database)
+    {
+    }
+
+    std::optional<Shown> read(const QDate &start, const QDate &end);
+
+private:
+    /// Tells one state of the database from the next.
+    struct Stamp {
+        QDateTime changed;
+        qint64 size = 0;
+        QDateTime journalChanged;
+        qint64 journalSize = 0;
+        bool operator==(const Stamp &) const = default;
+    };
+    Stamp stamp() const;
+
+    const QString m_database;
+    /// The database as it was read last, kept for as long as the files stay
+    /// as they are: Plasma asks again whenever the calendar is opened or
+    /// another month is shown.
+    std::unique_ptr<Engine> m_engine;
+    Stamp m_stamp;
+};
+
 KalendarEventsPlugin::KalendarEventsPlugin(QObject *parent)
     : CalendarEvents::CalendarEventsPlugin(parent)
     , m_database(databasePath())
+    , m_reader(new Reader(m_database))
 {
+    m_reader->moveToThread(&m_thread);
+    connect(&m_thread, &QThread::finished, m_reader, &QObject::deleteLater);
+    m_thread.start();
+
     // Kalendar writes in several steps; they are waited out and then read as one.
     m_settle.setSingleShot(true);
     m_settle.setInterval(500);
@@ -39,6 +75,13 @@ KalendarEventsPlugin::KalendarEventsPlugin(QObject *parent)
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, &m_settle, qOverload<>(&QTimer::start));
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_settle, qOverload<>(&QTimer::start));
     watch();
+}
+
+KalendarEventsPlugin::~KalendarEventsPlugin()
+{
+    ++m_serial; // what is still asked for is not wanted any more
+    m_thread.quit();
+    m_thread.wait();
 }
 
 void KalendarEventsPlugin::watch()
@@ -75,25 +118,44 @@ void KalendarEventsPlugin::loadEventsForDateRange(const QDate &startDate, const 
     m_end = endDate;
     // Plasma has dropped what it had before it asks, so there is nothing to
     // take back: what is there now is all it needs.
-    m_shown = read().value_or(Shown());
-    announce(m_shown);
+    m_shown.clear();
+    request();
 }
 
 void KalendarEventsPlugin::reload()
 {
     watch();
-    if (!m_start.isValid() || !m_end.isValid()) {
-        return;
+    if (m_start.isValid() && m_end.isValid()) {
+        request();
     }
-    const std::optional<Shown> now = read();
-    if (!now) {
-        return; // it is there but cannot be read right now: what is shown stays
+}
+
+void KalendarEventsPlugin::request()
+{
+    const quint64 serial = ++m_serial;
+    QMetaObject::invokeMethod(m_reader, [this, reader = m_reader, serial, start = m_start, end = m_end] {
+        if (serial != m_serial) {
+            return; // asked again meanwhile
+        }
+        QMetaObject::invokeMethod(this, [this, serial, events = reader->read(start, end)] {
+            show(serial, events);
+        });
+    });
+}
+
+void KalendarEventsPlugin::show(quint64 serial, const std::optional<Shown> &events)
+{
+    // An answer to an earlier question would come on top of the one to the
+    // last. If the database is there but cannot be read right now, what is
+    // shown stays.
+    if (serial != m_serial || !events) {
+        return;
     }
     // Not every change of the files is one of the days that are shown; reading
     // them makes files appear next to the database, for one.
-    const bool unchanged = now->size() == m_shown.size() && std::all_of(now->keyBegin(), now->keyEnd(), [&](const QString &key) {
+    const bool unchanged = events->size() == m_shown.size() && std::all_of(events->keyBegin(), events->keyEnd(), [&](const QString &key) {
         const auto before = m_shown.constFind(key);
-        const Entry &entry = *now->constFind(key);
+        const Entry &entry = *events->constFind(key);
         return before != m_shown.cend() && before->firstDay == entry.firstDay && before->lastDay == entry.lastDay && same(before->event, entry.event);
     });
     if (unchanged) {
@@ -102,7 +164,7 @@ void KalendarEventsPlugin::reload()
     if (!m_shown.isEmpty()) {
         Q_EMIT eventRemoved(Everything);
     }
-    m_shown = *now;
+    m_shown = *events;
     announce(m_shown);
 }
 
@@ -120,17 +182,38 @@ void KalendarEventsPlugin::announce(const Shown &events)
     }
 }
 
-std::optional<KalendarEventsPlugin::Shown> KalendarEventsPlugin::read() const
+KalendarEventsPlugin::Reader::Stamp KalendarEventsPlugin::Reader::stamp() const
+{
+    const QFileInfo database(m_database);
+    // Changes go to the file ending in -wal first. Reading makes an empty
+    // one appear, which is no change.
+    const QFileInfo journal(m_database + u"-wal"_s);
+    Stamp stamp{database.lastModified(), database.size(), {}, journal.size()};
+    if (stamp.journalSize > 0) {
+        stamp.journalChanged = journal.lastModified();
+    }
+    return stamp;
+}
+
+std::optional<KalendarEventsPlugin::Shown> KalendarEventsPlugin::Reader::read(const QDate &start, const QDate &end)
 {
     Shown result;
     if (!QFileInfo::exists(m_database)) {
+        m_engine.reset();
         return result; // Kalendar has not been used yet
     }
-    Engine engine;
-    if (!engine.openReadOnly(m_database)) {
-        return std::nullopt;
+    // Looked at before reading, so that a change meanwhile is seen next time.
+    const Stamp now = stamp();
+    if (!m_engine || now != m_stamp) {
+        m_engine = std::make_unique<Engine>();
+        m_stamp = now;
+        if (!m_engine->openReadOnly(m_database)) {
+            m_engine.reset();
+            return std::nullopt;
+        }
     }
-    const QList<Occurrence> occurrences = engine.occurrences(m_start, m_end);
+    const Engine &engine = *m_engine;
+    const QList<Occurrence> occurrences = engine.occurrences(start, end);
     for (const Occurrence &occurrence : occurrences) {
         const Collection *calendar = engine.collection(occurrence.collectionId);
         Entry entry;

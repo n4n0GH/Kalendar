@@ -97,11 +97,18 @@ private Q_SLOTS:
         removed.clear();
 
         // Another month is asked for: only that month's events are there then.
+        // Plasma is not kept waiting for them: they follow by themselves.
         load(QDate(2026, 12, 1), QDate(2026, 12, 31));
-        QCOMPARE(shown.size(), 5); // the Thursdays of December
+        QVERIFY(shown.isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 5, 5000); // the Thursdays of December
         QVERIFY(shown.contains(QDate(2026, 12, 31)));
+        // Plasma tends to ask several times in a row, and drops what it has
+        // each time: only the last question is answered, and only once.
+        load(QDate(2026, 12, 1), QDate(2026, 12, 31));
         load(first, last);
-        QCOMPARE(shown.size(), 6);
+        load(first, last);
+        QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 6, 5000);
+        QVERIFY(!shown.contains(QDate(2026, 12, 31)));
         QVERIFY(removed.isEmpty());
 
         // Reading the database made files appear next to it. That is no
@@ -138,6 +145,10 @@ private Q_SLOTS:
         QVERIFY(kalendar.pendingChanges() == 0);
         kalendar.setCollectionEnabled(calendar, true);
         QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 3, 5000);
+
+        // Plasma switches the plugin off while events are being read.
+        load(QDate(2026, 12, 1), QDate(2026, 12, 31));
+        delete plugin;
     }
 };
 
