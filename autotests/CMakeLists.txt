@@ -45,6 +45,14 @@ ecm_add_test(clockplugintest.cpp
 target_compile_definitions(clockplugintest PRIVATE TRANSLATION_DOMAIN="kalendar" KALENDAR_PLUGIN_DIR="")
 target_include_directories(clockplugintest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# The colors of the desktop in a Flatpak: the scheme file made of the portal's.
+ecm_add_test(desktopcolorstest.cpp
+        ${CMAKE_SOURCE_DIR}/src/desktopcolors.cpp
+    TEST_NAME desktopcolorstest
+    LINK_LIBRARIES Qt6::Test Qt6::DBus Qt6::Widgets
+)
+target_include_directories(desktopcolorstest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # The layer between the interface and the calendars, with the same server.
 ecm_add_test(backendtest.cpp
         ${CMAKE_SOURCE_DIR}/src/backend.cpp

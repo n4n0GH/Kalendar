@@ -28,6 +28,8 @@ add_executable(kalendar
     backend.h
     clockplugin.cpp
     clockplugin.h
+    desktopcolors.cpp
+    desktopcolors.h
     onlineaccounts.cpp
     onlineaccounts.h
     secretstore.cpp

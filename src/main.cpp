@@ -5,6 +5,7 @@
 #include "engine.h"
 #include "kalendar-version.h"
 #include "clockplugin.h"
+#include "desktopcolors.h"
 #include "onlineaccounts.h"
 #include "secretstore.h"
 #include "singleinstance.h"
@@ -142,6 +143,8 @@ int main(int argc, char **argv)
         QQuickStyle::setStyle(u"org.kde.desktop"_s);
     }
     KColorSchemeManager::instance();
+    // In a Flatpak, the colors of the desktop as they change.
+    DesktopColors desktopColors(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
     const QString dataDirectory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dataDirectory);
