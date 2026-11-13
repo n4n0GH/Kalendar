@@ -18,6 +18,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFile>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -46,6 +47,27 @@ public:
         return false;
     }
 };
+
+/// In a Flatpak, the settings of Plasma's global theme (the icon theme, say),
+/// as outside of it: they are in "kdedefaults" in the configuration folder,
+/// which Plasma lists in XDG_CONFIG_DIRS. Flatpak sets that variable anew, so
+/// KDE's libraries see only "kdeglobals", and without an icon theme named
+/// there, they draw Breeze's. (The manifest lets the folder be read.)
+void plasmaDefaultsInFlatpak()
+{
+    if (!QFile::exists(u"/.flatpak-info"_s)) {
+        return;
+    }
+    const QString config = qEnvironmentVariable("XDG_CONFIG_HOME", QDir::homePath() + u"/.config"_s);
+    const QString defaults = config + u"/kdedefaults"_s;
+    if (!QDir(defaults).exists()) {
+        return;
+    }
+    QStringList dirs = qEnvironmentVariable("XDG_CONFIG_DIRS", u"/etc/xdg"_s).split(u':', Qt::SkipEmptyParts);
+    dirs.removeAll(defaults);
+    dirs.prepend(defaults);
+    qputenv("XDG_CONFIG_DIRS", dirs.join(u':').toLocal8Bit());
+}
 
 /// For trying things out and for taking pictures of the app, with
 /// KALENDAR_TEST_MODE set: nothing of the user's is touched then.
@@ -105,6 +127,7 @@ int main(int argc, char **argv)
 {
     const bool testMode = qEnvironmentVariableIsSet("KALENDAR_TEST_MODE");
     QStandardPaths::setTestModeEnabled(testMode);
+    plasmaDefaultsInFlatpak();
     // What the desktop gave this start to bring a window to the front with;
     // Qt takes it away when it starts.
     const QString activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");

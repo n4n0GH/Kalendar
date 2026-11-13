@@ -17,6 +17,10 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # The settings of Plasma's global theme (the icon theme, say), which are not
+  # in kdeglobals (that one the runtime lets be read); main.cpp has KDE's
+  # libraries look here.
+  - --filesystem=xdg-config/kdedefaults:ro
   # Synchronizing with the accounts' servers.
   - --share=network
   # The accounts' passwords.
