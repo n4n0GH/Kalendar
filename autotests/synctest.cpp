@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "engine.h"
+#include "importsample.h"
 #include "radicaleserver.h"
 
 #include <QNetworkAccessManager>
@@ -281,6 +282,32 @@ private Q_SLOTS:
         QVERIFY(there.open(m_dir.filePath(u"offline-there.sqlite"_s)));
         addAccount(there);
         QVERIFY(titles(there).contains(u"Written offline"_s));
+    }
+
+    void sendsWhatWasImported()
+    {
+        Engine here;
+        QVERIFY(here.open(m_dir.filePath(u"import.sqlite"_s)));
+        addAccount(here);
+        int imported = 0;
+        QCOMPARE(here.importEvents(workId(here), ImportSample, &imported), QString());
+        QCOMPARE(imported, 2);
+        QTRY_COMPARE_WITH_TIMEOUT(here.pendingChanges(), 0, 10000);
+        QCOMPARE(here.accountError(here.accounts().last().id), QString());
+
+        // The server has them, the exception to the repetition included.
+        Engine there;
+        QVERIFY(there.open(m_dir.filePath(u"import-there.sqlite"_s)));
+        addAccount(there);
+        QVERIFY(titles(there).contains(u"Fair"_s));
+        QVERIFY(titles(there).contains(u"Call with New York (late)"_s));
+        const qsizetype before = there.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size();
+
+        // Imported again on the other system, they replace what is there.
+        QCOMPARE(there.importEvents(workId(there), ImportSample), QString());
+        QTRY_COMPARE_WITH_TIMEOUT(there.pendingChanges(), 0, 10000);
+        sync(there);
+        QCOMPARE(there.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), before);
     }
 };
 

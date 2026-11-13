@@ -8,6 +8,7 @@
 #include <QAbstractListModel>
 #include <QDateTime>
 #include <QQmlEngine>
+#include <QUrl>
 
 class OnlineAccounts;
 class QTimer;
@@ -111,6 +112,17 @@ public:
     /// Gives a token for undo(), or 0 if nothing was deleted.
     Q_INVOKABLE int deleteEvent(const QVariantMap &event, bool wholeSeries);
     Q_INVOKABLE void undo(int token);
+    /// What the calendar files @p files hold together, to show before they
+    /// are imported: count (how many events), events (the first few, each
+    /// with title, start, allDay and repeats), others (what is left out,
+    /// such as to-dos), and error (why there is nothing to import, if so).
+    Q_INVOKABLE QVariantMap inspectFiles(const QList<QUrl> &files) const;
+    /// Adds the events of @p files to a calendar. Gives count (how many
+    /// were added), date (when the first of them starts), and error.
+    Q_INVOKABLE QVariantMap importFiles(const QList<QUrl> &files, const QString &calendarId);
+    /// Files the user wants opened, from the command line or the file
+    /// manager, as paths or addresses relative to @p folder.
+    void openFiles(const QStringList &files, const QString &folder);
     Q_INVOKABLE void setCalendarShown(const QString &id, bool shown);
     Q_INVOKABLE void sync();
 
@@ -157,6 +169,8 @@ Q_SIGNALS:
     void accountFailed(const QString &message);
     /// Something happened that could be missed, in words for the user.
     void notice(const QString &text);
+    /// Calendar files are to be imported.
+    void filesOpened(const QList<QUrl> &files);
 
 private:
     void authorize(const Account &account, const Engine::AuthCallback &done);

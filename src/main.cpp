@@ -7,6 +7,7 @@
 #include "clockplugin.h"
 #include "onlineaccounts.h"
 #include "secretstore.h"
+#include "singleinstance.h"
 
 #include <KAboutData>
 #include <KColorSchemeManager>
@@ -14,6 +15,7 @@
 #include <KLocalizedString>
 
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QDir>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -86,6 +88,9 @@ int main(int argc, char **argv)
 {
     const bool testMode = qEnvironmentVariableIsSet("KALENDAR_TEST_MODE");
     QStandardPaths::setTestModeEnabled(testMode);
+    // What the desktop gave this start to bring a window to the front with;
+    // Qt takes it away when it starts.
+    const QString activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");
 
     // QApplication rather than QGuiApplication: the desktop style draws with widgets.
     QApplication app(argc, argv);
@@ -103,6 +108,19 @@ int main(int argc, char **argv)
     about.setBugAddress("https://github.com/n4n0gh/kalendar/issues");
     KAboutData::setApplicationData(about);
     QGuiApplication::setWindowIcon(QIcon::fromTheme(u"io.github.n4n0gh.kalendar"_s, QIcon::fromTheme(u"office-calendar"_s)));
+
+    QCommandLineParser parser;
+    about.setupCommandLine(&parser);
+    parser.addPositionalArgument(u"files"_s, i18nc("@info:shell", "Calendar files (.ics) to import"), i18nc("@info:shell placeholder for file names", "[files…]"));
+    parser.process(app);
+    about.processCommandLine(&parser);
+    const QStringList files = parser.positionalArguments();
+
+    // A Kalendar that is running already takes the files; tests keep to themselves.
+    SingleInstance instance;
+    if (!testMode && !instance.claim(files, activationToken)) {
+        return 0;
+    }
 
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
         QQuickStyle::setStyle(u"org.kde.desktop"_s);
@@ -134,6 +152,27 @@ int main(int argc, char **argv)
         },
         Qt::QueuedConnection);
     qml.loadFromModule("io.github.n4n0gh.kalendar", "Main");
+
+    QObject::connect(&instance, &SingleInstance::activated, &app, [&qml](const QString &token) {
+        if (auto *window = qobject_cast<QQuickWindow *>(qml.rootObjects().value(0))) {
+            // The desktop lets a window come to the front only with the token of what asked for it.
+            if (!token.isEmpty()) {
+                qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
+            }
+            if (window->visibility() == QWindow::Minimized || !window->isVisible()) {
+                window->showNormal();
+            }
+            window->raise();
+            window->requestActivate();
+        }
+    });
+    QObject::connect(&instance, &SingleInstance::filesOpened, &backend, [&backend](const QStringList &uris) {
+        backend.openFiles(uris, QDir::currentPath());
+    });
+    // Once the window is there to ask where the events are to go.
+    QTimer::singleShot(0, &backend, [&backend, files] {
+        backend.openFiles(files, QDir::currentPath());
+    });
 
     if (testMode) {
         setUpTestMode(engine, qml);

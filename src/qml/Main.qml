@@ -4,6 +4,7 @@
 import QtCore
 import QtQuick
 import QtQuick.Controls as QQC2
+import QtQuick.Dialogs
 import org.kde.coreaddons as KCoreAddons
 import org.kde.kirigami as Kirigami
 
@@ -73,6 +74,20 @@ Kirigami.ApplicationWindow {
 
     function addAccount(): void {
         addAccountDialog.open()
+    }
+
+    // Asks for calendar files to import.
+    function chooseFilesToImport(): void {
+        importFileDialog.open()
+    }
+
+    // Shows what the files hold and asks where their events are to go.
+    function importFiles(files: list<url>): void {
+        // Never two dialogs at a time: whatever was open gives way.
+        for (const open of [eventViewDialog, eventDialog, deleteRepeatingDialog, addAccountDialog, importDialog]) {
+            open.close()
+        }
+        importDialog.openFor(files)
     }
 
     function showSettings(): void {
@@ -173,11 +188,49 @@ Kirigami.ApplicationWindow {
         id: addAccountDialog
     }
 
+    FileDialog {
+        id: importFileDialog
+
+        title: i18nc("@title:window", "Import Events")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [i18nc("@item:inlistbox a kind of file", "Calendar files (*.ics *.ical *.ifb *.icalendar)"),
+            i18nc("@item:inlistbox a kind of file", "All files (*)")]
+        onAccepted: root.importFiles(selectedFiles)
+    }
+
+    ImportDialog {
+        id: importDialog
+
+        onImported: (count, date, calendarName) => {
+            // To where the events are, which may be far from today.
+            root.selectedDate = date
+            root.showPassiveNotification(i18ncp("@info %2 is the name of a calendar",
+                "One event added to “%2”", "%1 events added to “%2”", count, calendarName), "long")
+        }
+    }
+
+    // Calendar files dropped on the window are imported like opened ones.
+    DropArea {
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onDropped: drop => {
+            if (drop.hasUrls) {
+                drop.accept(Qt.CopyAction)
+                root.importFiles(drop.urls)
+            }
+        }
+    }
+
     Connections {
         target: Backend
 
         function onNotice(text: string): void {
             root.showPassiveNotification(text, "long")
+        }
+
+        // From the file manager or the command line.
+        function onFilesOpened(files: list<url>): void {
+            root.importFiles(files)
         }
     }
 }

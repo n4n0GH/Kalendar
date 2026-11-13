@@ -35,6 +35,24 @@ struct Occurrence {
     QDate lastDay;
 };
 
+/// What a calendar file from elsewhere holds, to show before it is imported.
+struct CalendarFile {
+    struct Entry {
+        QString summary;
+        /// In local time.
+        QDateTime start;
+        bool allDay = false;
+        bool repeats = false;
+    };
+
+    /// Whether it is a calendar file at all.
+    bool valid = false;
+    /// One per event, however often it repeats; the earliest first.
+    QList<Entry> events;
+    /// What it holds besides events, such as to-dos; those are left out.
+    int others = 0;
+};
+
 /// The calendars and their events: keeps them on disk, keeps them in step
 /// with their servers, and answers what happens when.
 ///
@@ -108,6 +126,14 @@ public:
     /// Creates or changes an event. Gives an error message, or an empty
     /// string. See the implementation for the fields of @p data.
     QString saveEvent(const QVariantMap &data);
+    /// What the calendar file @p ics holds.
+    static CalendarFile inspect(const QByteArray &ics);
+    /// Adds the events of the calendar file @p ics to a calendar and sends
+    /// them to its server. An event that the calendar has already (one of
+    /// the same UID) is replaced, so importing a file twice changes nothing.
+    /// Gives an error message, or an empty string; @p imported is how many
+    /// events were taken.
+    QString importEvents(const QString &collectionId, const QByteArray &ics, int *imported = nullptr);
     /// Deletes an event: all of it, or for a repeating event with
     /// @p wholeSeries false, only the appearance at @p occurrenceStart.
     /// Gives a token for undo(), or 0 if nothing was deleted.
@@ -170,6 +196,8 @@ private:
     void setItem(const QString &collectionId, const QString &href, const QString &etag, const QByteArray &ics, int dirty, bool store = true);
     void dropItem(const QString &collectionId, const QString &href);
     static KCalendarCore::Event::List parse(const QByteArray &ics);
+    /// Where a new event of @p uid is kept in @p target.
+    QString newHref(const Collection &target, const QString &uid) const;
     static QByteArray serialize(const KCalendarCore::Event::List &events);
     QVariantMap toVariant(const Occurrence &occurrence) const;
 

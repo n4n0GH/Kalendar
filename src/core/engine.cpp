@@ -11,6 +11,7 @@
 
 #include <QBitArray>
 #include <QNetworkAccessManager>
+#include <QRegularExpression>
 #include <QTimeZone>
 #include <QTimer>
 #include <QUuid>
@@ -850,21 +851,132 @@ QString Engine::saveEvent(const QVariantMap &data)
         etag.clear();
     }
     if (href.isEmpty()) {
-        switch (account(target->accountId)->type) {
-        case Account::Local:
-            href = u"local:"_s + event->uid();
-            break;
-        case Account::CalDav:
-            href = DavClient::absolute(target->url, event->uid() + u".ics"_s);
-            break;
-        case Account::Google:
-            href = GoogleClient::hrefFor(target->url, event->uid());
-            break;
-        }
+        href = newHref(*target, event->uid());
     }
     setItem(target->id, href, etag, serialize(events), ItemRecord::Changed);
     Q_EMIT eventsChanged();
     push(target->id);
+    return {};
+}
+
+QString Engine::newHref(const Collection &target, const QString &uid) const
+{
+    switch (account(target.accountId)->type) {
+    case Account::Local:
+        return u"local:"_s + uid;
+    case Account::CalDav: {
+        // An event made elsewhere may be called anything; only a name of
+        // letters, digits and the like is sure to make an address.
+        static const QRegularExpression plain(u"^[A-Za-z0-9._@-]{1,200}$"_s);
+        return DavClient::absolute(target.url, (plain.match(uid).hasMatch() ? uid : newId()) + u".ics"_s);
+    }
+    case Account::Google:
+        return GoogleClient::hrefFor(target.url, uid);
+    }
+    return {};
+}
+
+// Calendar files from elsewhere
+
+namespace
+{
+/// The events of a calendar file, those that belong together (an event and
+/// the exceptions to its repetition share a UID) side by side.
+QList<Event::List> eventsByUid(const QByteArray &ics, bool *valid = nullptr, int *others = nullptr)
+{
+    const auto calendar = KCalendarCore::MemoryCalendar::Ptr::create(QTimeZone::systemTimeZone());
+    const bool parsed = KCalendarCore::ICalFormat().fromRawString(calendar, ics);
+    if (valid) {
+        *valid = parsed;
+    }
+    if (others) {
+        *others = parsed ? calendar->rawTodos().size() + calendar->rawJournals().size() : 0;
+    }
+    QList<Event::List> result;
+    if (!parsed) {
+        return result;
+    }
+    QHash<QString, int> index;
+    const Event::List events = calendar->rawEvents(KCalendarCore::EventSortStartDate);
+    for (const Event::Ptr &event : events) {
+        const Event::Ptr copy(event->clone());
+        if (copy->uid().isEmpty()) {
+            copy->setUid(newId());
+        }
+        const auto found = index.constFind(copy->uid());
+        if (found == index.cend()) {
+            index.insert(copy->uid(), result.size());
+            result.append({copy});
+        } else {
+            result[*found].append(copy);
+        }
+    }
+    return result;
+}
+}
+
+CalendarFile Engine::inspect(const QByteArray &ics)
+{
+    CalendarFile file;
+    const QList<Event::List> found = eventsByUid(ics, &file.valid, &file.others);
+    for (const Event::List &events : found) {
+        const Event::Ptr master = masterOf(events);
+        const Event::Ptr event = master ? master : events.first();
+        CalendarFile::Entry entry;
+        entry.summary = event->summary().trimmed();
+        entry.allDay = event->allDay();
+        entry.start = entry.allDay ? QDateTime(event->dtStart().date(), QTime(0, 0)) : event->dtStart().toLocalTime();
+        entry.repeats = event->recurs();
+        file.events.append(entry);
+    }
+    std::stable_sort(file.events.begin(), file.events.end(), [](const CalendarFile::Entry &a, const CalendarFile::Entry &b) {
+        return a.start < b.start;
+    });
+    return file;
+}
+
+QString Engine::importEvents(const QString &collectionId, const QByteArray &ics, int *imported)
+{
+    if (imported) {
+        *imported = 0;
+    }
+    if (m_readOnly) {
+        return i18nc("@info", "The calendars can only be looked at here.");
+    }
+    const Collection *target = collection(collectionId);
+    if (!target) {
+        return i18nc("@info", "The calendar no longer exists. Choose another one.");
+    }
+    if (target->readOnly) {
+        return i18nc("@info", "The calendar “%1” cannot be changed.", target->name);
+    }
+    bool valid = false;
+    const QList<Event::List> found = eventsByUid(ics, &valid);
+    if (!valid) {
+        return i18nc("@info", "This is not a calendar file.");
+    }
+    State &state = m_state[collectionId];
+    // Written down together: there may be thousands.
+    m_db.begin();
+    for (const Event::List &events : found) {
+        // An event the calendar has already is replaced by the one from the
+        // file, on the server too, even if it was just deleted here.
+        QString href = state.hrefByUid.value(events.first()->uid());
+        const QString etag = href.isEmpty() ? QString() : state.items.value(href).etag;
+        if (href.isEmpty()) {
+            href = newHref(*target, events.first()->uid());
+        }
+        state.held.remove(href);
+        setItem(collectionId, href, etag, serialize(events), ItemRecord::Changed);
+    }
+    m_db.commit();
+    if (imported) {
+        *imported = found.size();
+    }
+    if (!found.isEmpty()) {
+        Q_EMIT eventsChanged();
+        push(collectionId);
+    }
     return {};
 }
 

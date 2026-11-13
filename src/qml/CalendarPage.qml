@@ -173,6 +173,13 @@ Kirigami.Page {
             onTriggered: Backend.sync()
         },
         Kirigami.Action {
+            text: i18nc("@action:button", "Import…")
+            icon.name: "document-import"
+            shortcut: StandardKey.Open
+            displayHint: Kirigami.DisplayHint.AlwaysHide
+            onTriggered: applicationWindow().chooseFilesToImport()
+        },
+        Kirigami.Action {
             text: i18nc("@action:button", "Settings")
             icon.name: "configure"
             shortcut: StandardKey.Preferences

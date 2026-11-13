@@ -16,6 +16,8 @@ A simple calendar for KDE Plasma that works with online accounts.
 - Events can be added, changed and deleted without a network; they are sent on at the next synchronization.
 - Repeating events (every day, week, month or year); other rhythms made elsewhere are shown and kept.
 - A click on an event shows it to read, with notes written as HTML shown as such; editing is one step further.
+- Calendar files (`.ics`) can be imported: from the menu, by dropping them on the window, or by opening them from the
+  file manager.
 - Events in the calendar of Plasma's clock, with a plugin that is installed from the settings.
 - Settings for 12 or 24 hours, the first day of the week, and week numbers.
 - Follows the system's colour scheme, fonts and locale, and reshapes itself for narrow windows and phones.

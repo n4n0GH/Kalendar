@@ -37,6 +37,7 @@ C++ objects created in `src/main.cpp`.
 | `Backend` | `src/backend.*` | What QML talks to. A thin layer over the engine that adds what only an app has: signing in, settings, text for people. |
 | `SecretStore` | `src/secretstore.*` | Passwords in KWallet. |
 | `OnlineAccounts` | `src/onlineaccounts.*` | The Google accounts of the system's Online Accounts, and tokens for them. |
+| `SingleInstance` | `src/singleinstance.*` | Keeps Kalendar to one process, and hands that one the files another was started with. |
 | `ClockPlugin` | `src/clockplugin.*` | Installs the plugin for Plasma's clock for the user. |
 | `KalendarEventsPlugin` | `src/plasma/` | The plugin itself, which runs inside Plasma. |
 
@@ -45,6 +46,18 @@ the backend, in that order, and hands the backend to QML through a static
 `create()` that returns the existing instance (`QML_SINGLETON` with C++
 ownership). `ClockPlugin` depends on nothing and is created by the QML engine
 on first use.
+
+## One Kalendar at a time
+
+The engine keeps every event in memory, so two Kalendars on one database
+would each know nothing of what the other changed. `main()` therefore first
+takes the name `io.github.n4n0gh.kalendar` on the session bus
+(`SingleInstance::claim()`). If it is taken, the files from the command line
+go to the Kalendar that has it, which brings its window to the front and
+offers to import them; the new process quits. The running one answers to
+`org.freedesktop.Application` (`Activate`, `Open`, `ActivateAction`) at
+`/io/github/n4n0gh/kalendar`. With `KALENDAR_TEST_MODE` set, none of this
+happens.
 
 ## The core library
 
@@ -59,7 +72,8 @@ writing iCalendar, time zones, and working out when repeating events happen.
 
 ## Threads
 
-There is one, the main thread. Network requests, D-Bus calls and the wallet are
+The app has one, the main thread (the clock plugin has a second: see
+[The clock plugin](clock-plugin.md)). Network requests, D-Bus calls and the wallet are
 asynchronous through Qt's event loop; SQLite and the handling of calendar
 files are not, and are kept short. The one thing that was not short, writing
 hundreds of fetched events one by one, is done in a single transaction (see

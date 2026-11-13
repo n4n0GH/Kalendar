@@ -32,6 +32,8 @@ add_executable(kalendar
     onlineaccounts.h
     secretstore.cpp
     secretstore.h
+    singleinstance.cpp
+    singleinstance.h
 )
 
 ecm_add_qml_module(kalendar
@@ -49,11 +51,13 @@ ecm_target_qml_sources(kalendar SOURCES
     qml/WeekView.qml
     qml/EventChip.qml
     qml/CalendarLabel.qml
+    qml/CalendarBox.qml
     qml/MiniMonth.qml
     qml/DateButton.qml
     qml/TimeField.qml
     qml/EventDialog.qml
     qml/EventViewDialog.qml
+    qml/ImportDialog.qml
     qml/SettingsPage.qml
     qml/AddAccountDialog.qml
 )

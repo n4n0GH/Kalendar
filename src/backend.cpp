@@ -10,12 +10,15 @@
 #include <KLocalizedString>
 
 #include <QDesktopServices>
+#include <QFile>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
 #include <QTimer>
 #include <QUuid>
+
+#include <optional>
 
 using namespace Qt::StringLiterals;
 
@@ -279,6 +282,101 @@ int Backend::deleteEvent(const QVariantMap &event, bool wholeSeries)
                                  event.value(u"href"_s).toString(),
                                  event.value(u"slot"_s).toDateTime(),
                                  wholeSeries);
+}
+
+namespace
+{
+/// The contents of a calendar file; nothing if it cannot be read.
+std::optional<QByteArray> contentsOf(const QUrl &url)
+{
+    QFile file(url.toLocalFile());
+    if (!url.isLocalFile() || !file.open(QIODevice::ReadOnly)) {
+        return std::nullopt;
+    }
+    return file.readAll();
+}
+}
+
+QVariantMap Backend::inspectFiles(const QList<QUrl> &files) const
+{
+    // As many as can be taken in at a glance.
+    const int shown = 5;
+    QList<CalendarFile::Entry> events;
+    int others = 0;
+    QString error;
+    for (const QUrl &url : files) {
+        const std::optional<QByteArray> contents = contentsOf(url);
+        const CalendarFile file = contents ? Engine::inspect(*contents) : CalendarFile();
+        if (!contents) {
+            error = i18nc("@info %1 is the name of a file", "“%1” could not be read.", url.fileName());
+        } else if (!file.valid) {
+            error = i18nc("@info %1 is the name of a file", "“%1” is not a calendar file.", url.fileName());
+        }
+        events.append(file.events);
+        others += file.others;
+    }
+    if (events.isEmpty() && error.isEmpty()) {
+        error = files.size() == 1 ? i18nc("@info %1 is the name of a file", "“%1” holds no events.", files.first().fileName())
+                                  : i18nc("@info", "The files hold no events.");
+    }
+    std::stable_sort(events.begin(), events.end(), [](const CalendarFile::Entry &a, const CalendarFile::Entry &b) {
+        return a.start < b.start;
+    });
+    QVariantList first;
+    for (const CalendarFile::Entry &entry : std::as_const(events).first(std::min<qsizetype>(shown, events.size()))) {
+        first.append(QVariantMap{
+            {u"title"_s, entry.summary.isEmpty() ? i18nc("@info shown in place of the title of an event that has none", "No Title") : entry.summary},
+            {u"start"_s, entry.start},
+            {u"allDay"_s, entry.allDay},
+            {u"repeats"_s, entry.repeats},
+        });
+    }
+    return {
+        {u"count"_s, events.size()},
+        {u"events"_s, first},
+        {u"others"_s, others},
+        // Files that hold events are imported even if another does not.
+        {u"error"_s, events.isEmpty() ? error : QString()},
+    };
+}
+
+QVariantMap Backend::importFiles(const QList<QUrl> &files, const QString &calendarId)
+{
+    int count = 0;
+    QDateTime date;
+    QString error;
+    for (const QUrl &url : files) {
+        const std::optional<QByteArray> contents = contentsOf(url);
+        const CalendarFile file = contents ? Engine::inspect(*contents) : CalendarFile();
+        if (file.events.isEmpty()) {
+            continue;
+        }
+        int imported = 0;
+        error = m_engine->importEvents(calendarId, *contents, &imported);
+        if (!error.isEmpty()) {
+            break;
+        }
+        count += imported;
+        if (!date.isValid() || file.events.first().start < date) {
+            date = file.events.first().start;
+        }
+    }
+    if (count > 0) {
+        QSettings().setValue(u"Events/calendar"_s, calendarId);
+        Q_EMIT writableCalendarsChanged();
+    }
+    return {{u"count"_s, count}, {u"date"_s, date}, {u"error"_s, error}};
+}
+
+void Backend::openFiles(const QStringList &files, const QString &folder)
+{
+    QList<QUrl> urls;
+    for (const QString &file : files) {
+        urls.append(QUrl::fromUserInput(file, folder, QUrl::AssumeLocalFile));
+    }
+    if (!urls.isEmpty()) {
+        Q_EMIT filesOpened(urls);
+    }
 }
 
 void Backend::undo(int token)

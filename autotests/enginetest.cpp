@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "engine.h"
+#include "importsample.h"
 
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimeZone>
 
 using namespace Qt::StringLiterals;
 
@@ -247,6 +249,86 @@ private Q_SLOTS:
         // D is on its own, and drawn longer than its five minutes.
         QCOMPARE(value(3, u"columns"_s), 1);
         QCOMPARE(value(3, u"endMinute"_s), 15 * 60 + 30);
+    }
+
+    void importsACalendarFile()
+    {
+        // What the file holds, before anything is done with it.
+        const CalendarFile file = Engine::inspect(ImportSample);
+        QVERIFY(file.valid);
+        QCOMPARE(file.events.size(), 2); // the exception belongs to its event
+        QCOMPARE(file.others, 1);
+        QCOMPARE(file.events.at(0).summary, u"Fair"_s);
+        QVERIFY(file.events.at(0).allDay);
+        QCOMPARE(file.events.at(0).start, QDateTime(QDate(2026, 11, 5), QTime(0, 0)));
+        QCOMPARE(file.events.at(1).summary, u"Call with New York"_s);
+        QVERIFY(file.events.at(1).repeats);
+        QVERIFY(!Engine::inspect("Dear Ada, see you on Monday.").valid);
+        QVERIFY(Engine::inspect("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n").events.isEmpty());
+
+        const QTimeZone newYork("America/New_York");
+        {
+            Engine engine;
+            engine.setUndoPeriod(0);
+            QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+            const QString calendar = engine.collections().first().id;
+            QSignalSpy changed(&engine, &Engine::eventsChanged);
+
+            int imported = -1;
+            QVERIFY(!engine.importEvents(u"no such calendar"_s, ImportSample, &imported).isEmpty());
+            QVERIFY(!engine.importEvents(calendar, "Dear Ada, see you on Monday.", &imported).isEmpty());
+            QCOMPARE(imported, 0);
+            QVERIFY(changed.isEmpty());
+
+            QCOMPARE(engine.importEvents(calendar, ImportSample, &imported), QString());
+            QCOMPARE(imported, 2);
+            QCOMPARE(changed.size(), 1);
+            QCOMPARE(engine.pendingChanges(), 0); // nowhere to send them
+
+            // Three calls, the second one two hours late; all at New York's time.
+            QList<Occurrence> found = engine.occurrences(QDate(2026, 11, 8), QDate(2026, 12, 31));
+            QCOMPARE(found.size(), 3);
+            std::sort(found.begin(), found.end(), [](const Occurrence &a, const Occurrence &b) {
+                return a.start < b.start;
+            });
+            QCOMPARE(found.at(0).start, QDateTime(QDate(2026, 11, 16), QTime(10, 0), newYork));
+            QCOMPARE(found.at(0).end, QDateTime(QDate(2026, 11, 16), QTime(10, 30), newYork));
+            QCOMPARE(found.at(1).start, QDateTime(QDate(2026, 11, 23), QTime(12, 0), newYork));
+            QCOMPARE(found.at(1).event->summary(), u"Call with New York (late)"_s);
+            QCOMPARE(found.at(2).start, QDateTime(QDate(2026, 11, 30), QTime(10, 0), newYork));
+            QCOMPARE(found.at(0).href, found.at(1).href);
+
+            // The fair: the 5th and the 6th, as the end of whole days is the day after.
+            found = engine.occurrences(QDate(2026, 11, 1), QDate(2026, 11, 8));
+            QCOMPARE(found.size(), 1);
+            QVERIFY(found.first().allDay);
+            QCOMPARE(found.first().firstDay, QDate(2026, 11, 5));
+            QCOMPARE(found.first().lastDay, QDate(2026, 11, 6));
+            QCOMPARE(found.first().event->location(), u"Hall 3"_s);
+
+            // An imported event is one like any other: it can be changed.
+            QVariantMap fair = engine.weekLayout(QDate(2026, 11, 5), 1, true, 0).value(u"segments"_s).toList().first().toMap();
+            fair.insert(u"originalCollectionId"_s, calendar);
+            fair.insert(u"summary"_s, u"Book Fair"_s);
+            QCOMPARE(engine.saveEvent(fair), QString());
+
+            // The same file again: nothing comes twice, and the file's version wins.
+            QCOMPARE(engine.importEvents(calendar, ImportSample, &imported), QString());
+            QCOMPARE(imported, 2);
+            QCOMPARE(engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), 4);
+            QCOMPARE(engine.occurrences(QDate(2026, 11, 5), QDate(2026, 11, 5)).first().event->summary(), u"Fair"_s);
+
+            // An event that was deleted here comes back with the file.
+            const Occurrence call = engine.occurrences(QDate(2026, 11, 16), QDate(2026, 11, 16)).first();
+            QVERIFY(engine.deleteEvent(calendar, call.href, {}, true) != 0);
+            QCOMPARE(engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), 1);
+            QCOMPARE(engine.importEvents(calendar, ImportSample), QString());
+            QCOMPARE(engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), 4);
+        }
+        // All of it is kept.
+        Engine engine;
+        QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+        QCOMPARE(engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), 4);
     }
 };
 

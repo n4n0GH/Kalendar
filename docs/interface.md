@@ -32,9 +32,10 @@ toolbar holds the buttons to move about instead (`titleDelegate` in
 `CalendarPage.qml`).
 
 Settings and About are pushed as layers on the page stack. Dialogs
-(`EventViewDialog`, `EventDialog`, `AddAccountDialog`) are created once in
-`Main.qml` and opened through functions of the window: `showEvent()`,
-`editEvent()`, `newEvent()`, `newEventAt()`, `addAccount()`.
+(`EventViewDialog`, `EventDialog`, `AddAccountDialog`, `ImportDialog`) are
+created once in `Main.qml` and opened through functions of the window:
+`showEvent()`, `editEvent()`, `newEvent()`, `newEventAt()`, `addAccount()`,
+`importFiles()`.
 
 ## Files
 
@@ -51,8 +52,34 @@ Settings and About are pushed as layers on the page stack. Dialogs
 | `EventDialog.qml` | An event to make or change |
 | `DateButton.qml`, `TimeField.qml` | Picking a day; typing or picking a time |
 | `CalendarLabel.qml` | A calendar in a list: colour, name, where it is kept |
+| `CalendarBox.qml` | Choosing the calendar events go to |
+| `ImportDialog.qml` | What calendar files hold, and where their events are to go |
 | `AddAccountDialog.qml` | Adding an account |
 | `SettingsPage.qml` | Accounts, how the calendar looks, the clock plugin |
+
+## Importing calendar files
+
+Calendar files (`.ics`, iCalendar) reach the window in four ways, which all
+end in `importFiles()`: *Import…* in the menu (a `FileDialog`), dropping
+files on the window, naming them on the command line, and opening them from
+the file manager, for which the desktop file names `text/calendar`. That is
+also what makes Kalendar a choice for the system's calendar application,
+which the *Add* button of Plasma's clock starts.
+
+`ImportDialog` shows what the files hold (`Backend.inspectFiles()`) and asks
+which calendar the events are to go to; files without events only get a line
+at the bottom of the window. `Backend.importFiles()` hands each file to
+`Engine::importEvents()`:
+
+- Every event becomes an item of its own, together with the exceptions to
+  its repetition (they share its UID), and is sent to the calendar's server
+  like an event made here.
+- An event the calendar has already, by its UID, is replaced. Importing a
+  file twice changes nothing; importing a newer version of it updates.
+- To-dos and journal entries are left out, and the dialog says how many.
+
+If Kalendar is running already, the files go to its window: see
+[Architecture](architecture.md#one-kalendar-at-a-time).
 
 ## How views get their events
 
