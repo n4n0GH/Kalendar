@@ -63,18 +63,25 @@ Kirigami.GlobalDrawer {
     leftPadding: 0
     rightPadding: 0
 
-    // At the top of the drawer; what is not needed below stays empty.
-    topContent: [
+    // Stays at the top: only the calendars below scroll when the window is
+    // too low for all of them.
+    header: ColumnLayout {
+        spacing: 0
+
         MiniMonth {
             Layout.fillWidth: true
             Layout.margins: Kirigami.Units.largeSpacing
             selectedDate: drawer.selectedDate
             onDateChosen: date => drawer.dateChosen(date)
             onMenuRequested: date => drawer.menuRequested(date)
-        },
+        }
         Kirigami.Separator {
             Layout.fillWidth: true
-        },
+        }
+    }
+
+    // What is not needed below the calendars stays empty.
+    topContent: [
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 0
