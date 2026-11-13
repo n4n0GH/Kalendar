@@ -36,6 +36,11 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.3" date="2026-11-13">
+      <description>
+        <p>Installed as a Flatpak, Kalendar draws the icons of the icon theme that Plasma's global theme sets. Before, it drew Breeze's icons unless the icon theme had been chosen on its own.</p>
+      </description>
+    </release>
     <release version="0.5.2" date="2026-11-13">
       <description>
         <p>Installed as a Flatpak, Kalendar follows the colors of the desktop when they change while it runs, such as on a switch between a light and a dark theme. Before, parts of the window kept the old colors until Kalendar was started again.</p>
