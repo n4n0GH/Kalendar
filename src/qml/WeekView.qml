@@ -6,26 +6,23 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-// One day or one week, with the hours of the day running down the page:
+// One week, with the hours of the day running down the page:
 // events that take whole days at the top, the others as tall as they are long.
 Item {
     id: view
 
     property date selectedDate: new Date()
-    property int dayCount: 7
-    // Whether several days are a week, from its first day on; otherwise
-    // they are the selected day and those that follow.
-    property bool wholeWeek: true
+    readonly property int dayCount: 7
 
     signal dateSelected(date date)
     signal newEventRequested(date start, bool allDay)
+    // Asks for the menu that a right click brings up.
+    signal menuRequested(date start, bool allDay)
     signal eventActivated(var event)
     signal dayActivated(date date)
 
     readonly property int firstDayOfWeek: Backend.firstDayOfWeek
-    readonly property date rangeStart: dayCount === 1 || !wholeWeek
-        ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
-        : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - (selectedDate.getDay() - firstDayOfWeek + 7) % 7)
+    readonly property date rangeStart: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - (selectedDate.getDay() - firstDayOfWeek + 7) % 7)
     // The column with the hours, wide enough for the widest of them.
     readonly property real gutter: hourMetrics.width + Kirigami.Units.largeSpacing * 2
     readonly property real dayWidth: (width - gutter) / dayCount
@@ -89,8 +86,6 @@ Item {
                     width: view.dayWidth
                     height: parent.height
                     hoverEnabled: true
-                    // In the view of one day there is nowhere further to go.
-                    enabled: view.dayCount > 1
                     text: date.toLocaleDateString(Qt.locale(), Locale.LongFormat)
                     onClicked: view.dayActivated(date)
 
@@ -158,7 +153,6 @@ Item {
 
                     required property int index
                     readonly property date date: view.addDays(view.rangeStart, index)
-                    // While the view changes between a day and a week, the two are briefly out of step.
                     readonly property int more: view.allDayLayout.more[index] ?? 0
 
                     x: view.gutter + index * view.dayWidth
@@ -174,6 +168,10 @@ Item {
                     }
                     TapHandler {
                         onDoubleTapped: view.newEventRequested(allDayCell.date, true)
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: view.menuRequested(allDayCell.date, true)
                     }
                     QQC2.ToolButton {
                         visible: allDayCell.more > 0
@@ -276,13 +274,19 @@ Item {
                             }
                         }
 
-                        // A double click makes an event at that time, to the half hour.
+                        // The time at a height in the column, to the half hour.
+                        function timeAt(y: real): date {
+                            const halfHours = Math.max(0, Math.min(47, Math.floor(y / (view.hourHeight / 2))))
+                            return new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(halfHours / 2), halfHours % 2 * 30)
+                        }
+
+                        // A double click makes an event at that time.
                         TapHandler {
-                            onDoubleTapped: (point, button) => {
-                                const halfHours = Math.floor(point.position.y / (view.hourHeight / 2))
-                                view.newEventRequested(new Date(dayColumn.date.getFullYear(), dayColumn.date.getMonth(), dayColumn.date.getDate(),
-                                    Math.floor(halfHours / 2), halfHours % 2 * 30), false)
-                            }
+                            onDoubleTapped: (point, button) => view.newEventRequested(dayColumn.timeAt(point.position.y), false)
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: (point, button) => view.menuRequested(dayColumn.timeAt(point.position.y), false)
                         }
 
                         Repeater {

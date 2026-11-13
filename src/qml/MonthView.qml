@@ -15,6 +15,8 @@ FocusScope {
     signal dateSelected(date date)
     signal stepRequested(int direction)
     signal newEventRequested(date date)
+    // Asks for the menu that a right click brings up.
+    signal menuRequested(date date)
     signal eventActivated(var event)
     // Asks to show one day in full, because not all its events fit here.
     signal dayActivated(date date)
@@ -160,6 +162,14 @@ FocusScope {
                                 view.dateSelected(cell.date)
                             }
                             onDoubleTapped: view.newEventRequested(cell.date)
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: {
+                                view.forceActiveFocus()
+                                view.dateSelected(cell.date)
+                                view.menuRequested(cell.date)
+                            }
                         }
 
                         // The number of the day; today's stands in a filled circle.

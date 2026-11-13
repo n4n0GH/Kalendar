@@ -6,16 +6,32 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-// One event in a view. Three looks: a bar for events that take whole days,
-// a line with a dot for events at a time of day in the month view, and a
-// block as tall as the event is long in the week view.
+// One event in a view. Four looks: a bar for events that take whole days,
+// a line with a dot for events at a time of day in the month view, a
+// block as tall as the event is long in the week view, and a row with the
+// title at one end and the time at the other in the list of days.
 QQC2.AbstractButton {
     id: chip
 
     required property var event
     property bool block: false
+    property bool row: false
 
-    readonly property bool filled: block || event.bar
+    readonly property bool filled: block || row || event.bar
+    // When it is, for the row: the times, or that it takes the whole day.
+    readonly property string rangeText: {
+        if (event.allDay) {
+            return i18nc("@label events that take the whole day; keep it short", "All day")
+        }
+        const sameDay = event.start.toDateString() === event.end.toDateString()
+        if (sameDay && event.start.getTime() === event.end.getTime()) {
+            return timeText
+        }
+        const end = Backend.formatTime(event.end, Backend.use24Hour)
+        return i18nc("@info a range of times", "%1 – %2", sameDay ? timeText
+            : i18nc("@info a day and a time of day", "%1 %2", event.start.toLocaleDateString(Qt.locale(), Locale.ShortFormat), timeText),
+            sameDay ? end : i18nc("@info a day and a time of day", "%1 %2", event.end.toLocaleDateString(Qt.locale(), Locale.ShortFormat), end))
+    }
     readonly property string timeText: event.allDay ? "" : Backend.formatTime(event.start, Backend.use24Hour)
     readonly property string description: {
         const locale = Qt.locale()
@@ -76,7 +92,7 @@ QQC2.AbstractButton {
 
         // In one line: for the month view and for events that take whole days.
         RowLayout {
-            visible: !chip.block
+            visible: !chip.block && !chip.row
             anchors.fill: parent
             anchors.leftMargin: chip.filled ? Kirigami.Units.smallSpacing : 0
             spacing: Kirigami.Units.smallSpacing
@@ -97,6 +113,29 @@ QQC2.AbstractButton {
             QQC2.Label {
                 Layout.fillWidth: true
                 text: chip.event.title
+                elide: Text.ElideRight
+            }
+        }
+
+        // The title at one end, time and place at the other: for the list of days.
+        RowLayout {
+            visible: chip.row
+            anchors.fill: parent
+            anchors.leftMargin: Kirigami.Units.largeSpacing
+            anchors.rightMargin: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.largeSpacing
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: chip.event.title
+                elide: Text.ElideRight
+            }
+            QQC2.Label {
+                // The title keeps at least half of the row.
+                Layout.maximumWidth: chip.width / 2
+                text: chip.event.location.length > 0
+                    ? i18nc("@info time and place of an event", "%1, %2", chip.rangeText, chip.event.location) : chip.rangeText
+                opacity: 0.75
                 elide: Text.ElideRight
             }
         }

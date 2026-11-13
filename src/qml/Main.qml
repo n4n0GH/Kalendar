@@ -14,8 +14,14 @@ Kirigami.ApplicationWindow {
     // The day everything revolves around: the views show the month, week
     // or day it is in, and new events start on it.
     property date selectedDate: new Date()
-    // "month", "week" or "day".
-    property string viewMode: "month"
+    // "agenda", "week" or "month".
+    property string viewMode: "agenda"
+    // Earlier versions had a view of one day, and may have been closed in it.
+    onViewModeChanged: {
+        if (viewMode === "day") {
+            viewMode = "agenda"
+        }
+    }
     // How many days the agenda shows: 3 or 7.
     property int agendaDays: 3
 
@@ -39,8 +45,12 @@ Kirigami.ApplicationWindow {
     // A new event on the selected day: in an hour from now if that is today,
     // otherwise in the morning.
     function newEvent(): void {
+        newEventOn(root.selectedDate)
+    }
+
+    // The same on another day.
+    function newEventOn(day: date): void {
         const now = new Date()
-        const day = root.selectedDate
         const today = day.toDateString() === now.toDateString()
         const hour = today ? Math.min(now.getHours() + 1, 23) : 9
         newEventAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour), false)

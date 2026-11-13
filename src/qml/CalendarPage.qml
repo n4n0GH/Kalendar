@@ -6,13 +6,14 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-// The one page of the app: the calendar, as a month, a week or a day.
+// The one page of the app: the calendar, as the days that come next, a
+// week or a month.
 Kirigami.Page {
     id: page
 
     property date selectedDate: new Date()
-    // "month", "week", "day", or "agenda": the selected day and those after it.
-    property string viewMode: "month"
+    // "agenda": the selected day and those after it, "week" or "month".
+    property string viewMode: "agenda"
     // How many days the agenda shows.
     property int agendaDays: 3
     required property Sidebar sidebar
@@ -24,7 +25,7 @@ Kirigami.Page {
     readonly property date weekStart: new Date(selectedDate.getFullYear(), selectedDate.getMonth(),
         selectedDate.getDate() - (selectedDate.getDay() - firstDayOfWeek + 7) % 7)
 
-    // One month, week or day back or ahead.
+    // One month, one week, or as many days as the agenda shows, back or ahead.
     function step(direction: int): void {
         const day = selectedDate
         if (viewMode === "month") {
@@ -32,7 +33,7 @@ Kirigami.Page {
             const length = new Date(day.getFullYear(), day.getMonth() + direction + 1, 0).getDate()
             dateSelected(new Date(day.getFullYear(), day.getMonth() + direction, Math.min(day.getDate(), length)))
         } else {
-            const days = viewMode === "week" ? 7 : viewMode === "agenda" ? agendaDays : 1
+            const days = viewMode === "week" ? 7 : agendaDays
             dateSelected(new Date(day.getFullYear(), day.getMonth(), day.getDate() + direction * days))
         }
     }
@@ -41,9 +42,6 @@ Kirigami.Page {
 
     title: {
         const locale = Qt.locale()
-        if (viewMode === "day") {
-            return selectedDate.toLocaleDateString(locale, Locale.LongFormat)
-        }
         if (viewMode === "week" || viewMode === "agenda") {
             const first = viewMode === "week" ? weekStart : selectedDate
             const last = new Date(first.getFullYear(), first.getMonth(), first.getDate() + (viewMode === "week" ? 7 : agendaDays) - 1)
@@ -112,16 +110,14 @@ Kirigami.Page {
     }
     readonly property Kirigami.Action previousAction: Kirigami.Action {
         text: page.viewMode === "month" ? i18nc("@action:button", "Previous Month")
-            : page.viewMode === "week" ? i18nc("@action:button", "Previous Week")
-            : page.viewMode === "agenda" ? i18nc("@action:button", "Previous Days") : i18nc("@action:button", "Previous Day")
+            : page.viewMode === "week" ? i18nc("@action:button", "Previous Week") : i18nc("@action:button", "Previous Days")
         icon.name: "go-previous"
         shortcut: StandardKey.Back
         onTriggered: page.step(-1)
     }
     readonly property Kirigami.Action nextAction: Kirigami.Action {
         text: page.viewMode === "month" ? i18nc("@action:button", "Next Month")
-            : page.viewMode === "week" ? i18nc("@action:button", "Next Week")
-            : page.viewMode === "agenda" ? i18nc("@action:button", "Next Days") : i18nc("@action:button", "Next Day")
+            : page.viewMode === "week" ? i18nc("@action:button", "Next Week") : i18nc("@action:button", "Next Days")
         icon.name: "go-next"
         shortcut: StandardKey.Forward
         onTriggered: page.step(1)
@@ -129,13 +125,13 @@ Kirigami.Page {
 
     actions: [
         Kirigami.Action {
-            text: i18nc("@action:button show one day", "Day")
-            icon.name: "view-calendar-day"
+            text: i18nc("@action:button show the days that come next", "Agenda")
+            icon.name: "view-calendar-agenda"
             shortcut: "Ctrl+1"
             checkable: true
-            checked: page.viewMode === "day"
+            checked: page.viewMode === "agenda"
             QQC2.ActionGroup.group: viewGroup
-            onTriggered: page.viewModeRequested("day")
+            onTriggered: page.viewModeRequested("agenda")
         },
         Kirigami.Action {
             text: i18nc("@action:button show one week", "Week")
@@ -154,15 +150,6 @@ Kirigami.Page {
             checked: page.viewMode === "month"
             QQC2.ActionGroup.group: viewGroup
             onTriggered: page.viewModeRequested("month")
-        },
-        Kirigami.Action {
-            text: i18nc("@action:button show the days that come next", "Agenda")
-            icon.name: "view-calendar-agenda"
-            shortcut: "Ctrl+4"
-            checkable: true
-            checked: page.viewMode === "agenda"
-            QQC2.ActionGroup.group: viewGroup
-            onTriggered: page.viewModeRequested("agenda")
         },
         Kirigami.Action {
             text: i18nc("@action:button fetch changes from the servers", "Refresh")
@@ -221,7 +208,28 @@ Kirigami.Page {
 
     Loader {
         anchors.fill: parent
-        sourceComponent: page.viewMode === "month" ? monthView : weekView
+        sourceComponent: page.viewMode === "month" ? monthView : page.viewMode === "week" ? weekView : agendaView
+    }
+
+    // What a right click on the calendar brings up.
+    QQC2.Menu {
+        id: contextMenu
+
+        // Makes the event where the click was.
+        property var create: null
+
+        QQC2.MenuItem {
+            action: Kirigami.Action {
+                text: i18nc("@action:inmenu", "New Event…")
+                icon.name: "appointment-new"
+                onTriggered: contextMenu.create()
+            }
+        }
+    }
+
+    function showContextMenu(create: var): void {
+        contextMenu.create = create
+        contextMenu.popup()
     }
 
     Component {
@@ -235,11 +243,26 @@ Kirigami.Page {
                 page.dateSelected(date)
                 applicationWindow().newEvent()
             }
+            onMenuRequested: date => page.showContextMenu(() => applicationWindow().newEvent())
             onEventActivated: event => applicationWindow().showEvent(event)
+            // The agenda from that day on has room for all its events.
             onDayActivated: date => {
                 page.dateSelected(date)
-                page.viewModeRequested("day")
+                page.viewModeRequested("agenda")
             }
+        }
+    }
+
+    Component {
+        id: agendaView
+
+        AgendaView {
+            selectedDate: page.selectedDate
+            dayCount: page.agendaDays
+            // The agenda starts at the selected day, and is to stay where it is.
+            onNewEventRequested: date => applicationWindow().newEventOn(date)
+            onMenuRequested: date => page.showContextMenu(() => applicationWindow().newEventOn(date))
+            onEventActivated: event => applicationWindow().showEvent(event)
         }
     }
 
@@ -248,20 +271,19 @@ Kirigami.Page {
 
         WeekView {
             selectedDate: page.selectedDate
-            dayCount: page.viewMode === "day" ? 1 : page.viewMode === "agenda" ? page.agendaDays : 7
-            wholeWeek: page.viewMode !== "agenda"
             onDateSelected: date => page.dateSelected(date)
             onNewEventRequested: (start, allDay) => {
-                // The agenda starts at the selected day, and is to stay where it is.
-                if (page.viewMode !== "agenda") {
-                    page.dateSelected(start)
-                }
+                page.dateSelected(start)
                 applicationWindow().newEventAt(start, allDay)
             }
+            onMenuRequested: (start, allDay) => page.showContextMenu(() => {
+                page.dateSelected(start)
+                applicationWindow().newEventAt(start, allDay)
+            })
             onEventActivated: event => applicationWindow().showEvent(event)
             onDayActivated: date => {
                 page.dateSelected(date)
-                page.viewModeRequested("day")
+                page.viewModeRequested("agenda")
             }
         }
     }

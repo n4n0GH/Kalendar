@@ -9,7 +9,7 @@ A simple calendar for KDE Plasma that works with online accounts.
 
 ![The month view](docs/month.png)
 
-- Month, week and day views, and an agenda of the next three or seven days.
+- An agenda of the next three or seven days, and week and month views.
 - Google Calendar, through the Google accounts the system is signed in to, and any service that offers CalDAV: Nextcloud,
   iCloud, Fastmail, Radicale, and others.
 - A calendar that is kept on this system only, so the app is usable from the first start.

@@ -49,6 +49,7 @@ ecm_target_qml_sources(kalendar SOURCES
     qml/CalendarPage.qml
     qml/MonthView.qml
     qml/WeekView.qml
+    qml/AgendaView.qml
     qml/EventChip.qml
     qml/CalendarLabel.qml
     qml/CalendarBox.qml

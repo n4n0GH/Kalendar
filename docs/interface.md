@@ -15,17 +15,17 @@ icon theme by name, and nothing is positioned by numbers of pixels.
 
 ```
 ┌ November 2026 — Kalendar ─────────────────────────────────────────┐
-│ Sidebar        │ ◧ ‹ Today › New Event     Day Week Month Agenda ⋮ │
+│ Sidebar        │ ◧ ‹ Today › New Event         Agenda Week Month ⋮ │
 │  MiniMonth     ├────────────────────────────────────────────────────┤
 │  calendars     │                                                    │
-│  with ticks    │   MonthView, or WeekView for week, day and agenda  │
+│  with ticks    │   AgendaView, WeekView or MonthView                │
 │                │                                                    │
 │ (Fetching…)    │                                                    │
 └────────────────┴────────────────────────────────────────────────────┘
 ```
 
 The window (`Main.qml`) holds the two things everything revolves around:
-`selectedDate` and `viewMode` (`month`, `week`, `day` or `agenda`). The
+`selectedDate` and `viewMode` (`agenda`, `week` or `month`). The
 sidebar and the page both read and set them. What the calendar shows is in
 the title bar of the window; the place a page title usually has in the
 toolbar holds the buttons to move about instead (`titleDelegate` in
@@ -46,8 +46,9 @@ created once in `Main.qml` and opened through functions of the window:
 | `MiniMonth.qml` | The small month, with week numbers if wanted |
 | `CalendarPage.qml` | The one page: toolbar, and the view for the mode |
 | `MonthView.qml` | Six weeks, each laid out by `Backend.weekLayout()` |
-| `WeekView.qml` | Days side by side with hours down the side: one day, a week, or the agenda |
-| `EventChip.qml` | One event in either view: a dot and a title, a bar, or a block |
+| `AgendaView.qml` | The selected day and those after it, one below the other, each with its events stacked |
+| `WeekView.qml` | The days of a week side by side, with hours down the side |
+| `EventChip.qml` | One event in any view: a dot and a title, a bar, a block, or a row |
 | `EventViewDialog.qml` | An event to read |
 | `EventDialog.qml` | An event to make or change |
 | `DateButton.qml`, `TimeField.qml` | Picking a day; typing or picking a time |
@@ -97,9 +98,24 @@ Each entry is also the event itself, as a map (`Engine::toVariant()`): that
 map is what is handed to `showEvent()` and `editEvent()`, and what
 `saveEvent()` and `deleteEvent()` take back.
 
-The agenda is `WeekView` with `wholeWeek` off: it starts at the selected day
-rather than at the first day of its week, for as many days as the setting
-says.
+The agenda (`AgendaView`), which Kalendar opens with, has no hours down the
+side: an evening with one event would be a long way to scroll to, and
+nothing would say that it is there. It is a list of days, each with all its
+events as rows of the same height (`weekLayout()` for that one day, which
+puts whole days first and the others by their time); a day without events is
+listed with nothing beside it. The list starts at the selected day and has as
+many days as the setting says, so it scrolls only when their events do not
+fit. The arrows in the toolbar go that many days back or ahead. Making an
+event on a day in the list leaves the selected day alone, so that the list
+stays where it is (`newEventOn()`).
+
+## Making an event
+
+*New Event* in the toolbar makes one on the selected day. A double click
+makes one where it was: on a day in the month and in the agenda, at a
+time in the week. A right click in any view brings up a menu with *New
+Event…* for the same place (`menuRequested()` of the views,
+`showContextMenu()` in `CalendarPage.qml`).
 
 ## QML conventions that bite
 
