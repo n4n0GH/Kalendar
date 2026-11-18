@@ -82,7 +82,7 @@ fraction of a second.
 | 412 or 409 (changed elsewhere meanwhile) | The server's version is fetched and kept; a notice says so |
 | 403 (calendar cannot be changed) | The same, with a notice that the change was taken back |
 | No answer, 401, or 5xx | The server cannot be used right now: everything stays for the next round, and the account shows the error |
-| Anything else | This one item is skipped until the next round |
+| Anything else | This one item is skipped until the next round, and the account shows which event it is and what the server said |
 | 404 or 410 on a deletion | Counts as done |
 
 "The server wins" is deliberate. Merging two versions of an event needs a
@@ -155,7 +155,10 @@ events look like calendar files to the engine.
   an appearance counts as a change to the file. What comes before the bar is
   what Google is asked to compare (`If-Match`).
 - **From a calendar file to Google** (`toJson()`, `put()`). New events are
-  `POST`ed; existing ones are `PATCH`ed, which changes only the fields that
+  `POST`ed, with the id that is in their address and without their UID:
+  Google takes one of the two for a new event, not both, and makes the UID
+  of the id (`<id>@google.com`), which Kalendar takes over when it next
+  fetches the event. Existing ones are `PATCH`ed, which changes only the fields that
   are sent, so that what Kalendar knows nothing of (guests, reminders,
   colours, video calls) stays as it is. An exception that was changed here is
   patched by its own id first; which ones were changed is told by a stamp

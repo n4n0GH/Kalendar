@@ -175,8 +175,11 @@ private:
         bool pushing = false;
         /// Events whose deletion can still be undone, and is not sent yet.
         QSet<QString> held;
-        /// Events that could not be sent in the current attempt.
-        QSet<QString> failed;
+        /// Events that could not be sent in the current attempt, with what
+        /// is to be said about each.
+        QHash<QString, QString> failed;
+        /// What is said about them since the last attempt ended.
+        QString unsent;
         bool pushedSomething = false;
         QList<std::function<void()>> afterPush;
     };

@@ -228,7 +228,17 @@ Collection *Engine::findCollection(const QString &id)
 
 QString Engine::accountError(const QString &accountId) const
 {
-    return m_errors.value(accountId);
+    if (m_errors.contains(accountId)) {
+        return m_errors.value(accountId);
+    }
+    // The server answers, but did not take everything.
+    for (const Collection &collection : m_collections) {
+        const auto state = m_state.constFind(collection.id);
+        if (collection.accountId == accountId && state != m_state.cend() && !state->unsent.isEmpty()) {
+            return state->unsent;
+        }
+    }
+    return {};
 }
 
 void Engine::setAccountError(const QString &accountId, const QString &error)
@@ -1257,6 +1267,7 @@ void Engine::push(const QString &collectionId, const std::function<void()> &done
     if (state.pushing) {
         return;
     }
+    state.failed.clear();
     QStringList pending;
     for (auto it = state.items.cbegin(); it != state.items.cend(); ++it) {
         if (it->dirty != ItemRecord::Clean && !state.held.contains(it.key())) {
@@ -1281,7 +1292,6 @@ void Engine::push(const QString &collectionId, const std::function<void()> &done
         return;
     }
     state.pushing = true;
-    state.failed.clear();
     const QString accountId = owner->id;
     m_auth(*owner, [=, this](const QByteArray &authorization, const QString &error) {
         const Account *owner = account(accountId);
@@ -1304,6 +1314,12 @@ void Engine::pushFinished(const QString &collectionId)
     }
     State &state = m_state[collectionId];
     state.pushing = false;
+    // What the server did not take is said for as long as that is so.
+    const QString unsent = state.failed.isEmpty() ? QString() : *state.failed.cbegin();
+    if (state.unsent != unsent) {
+        state.unsent = unsent;
+        Q_EMIT errorsChanged();
+    }
     const QList<std::function<void()>> callbacks = state.afterPush;
     state.afterPush.clear();
     for (const auto &callback : callbacks) {
@@ -1347,7 +1363,12 @@ void Engine::pushNext(const QString &collectionId, CalendarClient *client)
             setAccountError(accountId, reply.error);
             pushFinished(collectionId);
         } else {
-            state.failed.insert(href);
+            // It would not be taken the next time either, so it is said which one it is.
+            const Event::Ptr event = masterOf(item.events);
+            const QString title = !event || event->summary().isEmpty() ? i18nc("@info shown in place of the title of an event that has none", "No Title")
+                                                                        : event->summary();
+            state.failed.insert(href,
+                                i18nc("@info %1 is the title of an event, %2 says what went wrong", "The change to “%1” could not be sent. %2", title, reply.error));
             pushNext(collectionId, client);
         }
     };
@@ -1409,7 +1430,7 @@ void Engine::resolveConflict(const QString &collectionId, const QString &href, C
             return;
         }
         if (!reply.ok) {
-            m_state[collectionId].failed.insert(href);
+            m_state[collectionId].failed.insert(href, reply.error);
         } else if (items.isEmpty()) {
             dropItem(collectionId, href); // deleted on the server
         } else {

@@ -293,6 +293,7 @@ private Q_SLOTS:
                                    {u"repeat"_s, u"none"_s}}),
                  QString());
         QTRY_COMPARE(engine.pendingChanges(), 0);
+        QCOMPARE(engine.accountError(engine.accounts().last().id), QString());
         QJsonObject review = onServer(u"Review"_s);
         QCOMPARE(review.value("location"_L1).toString(), u"Room 4"_s);
         QCOMPARE(QDateTime::fromString(review.value("start"_L1).toObject().value("dateTime"_L1).toString(), Qt::ISODate), start);
@@ -367,6 +368,46 @@ private Q_SLOTS:
         Engine later;
         QVERIFY(later.open(m_dir.filePath(u"google.sqlite"_s)));
         QCOMPARE(titles(later), before);
+    }
+
+    void saysWhenAnEventIsNotTaken()
+    {
+        if (m_google.api().port() <= 0) {
+            QSKIP("There is no python3 to run the stand-in for Google with.");
+        }
+        Engine engine;
+        engine.setUndoPeriod(0);
+        QVERIFY(engine.open(m_dir.filePath(u"untaken.sqlite"_s)));
+        addAccount(engine);
+        const QString account = engine.accounts().last().id;
+        const QString ada = calendarId(engine, u"Ada"_s);
+
+        // Ends before it starts, which Google does not take.
+        QCOMPARE(engine.importEvents(ada,
+                                     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:backwards\r\nSUMMARY:Backwards\r\n"
+                                     "DTSTART:20261110T120000Z\r\nDTEND:20261110T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"),
+                 QString());
+        QTRY_VERIFY(!engine.accountError(account).isEmpty());
+        QVERIFY2(engine.accountError(account).contains("Backwards"_L1) && engine.accountError(account).contains("timeRangeEmpty"_L1),
+                 qPrintable(engine.accountError(account)));
+        QCOMPARE(engine.pendingChanges(), 1);
+        QVERIFY(onServer(u"Backwards"_s).isEmpty());
+
+        // It stays said while it is so, and what else there is goes on.
+        const QDateTime start(QDate(2026, 11, 13), QTime(10, 0));
+        QCOMPARE(engine.saveEvent({{u"collectionId"_s, ada}, {u"summary"_s, u"Fine"_s}, {u"start"_s, start}, {u"end"_s, start.addSecs(1800)}, {u"repeat"_s, u"none"_s}}),
+                 QString());
+        QTRY_VERIFY(!onServer(u"Fine"_s).isEmpty());
+        engine.syncAll();
+        QTRY_VERIFY_WITH_TIMEOUT(!engine.isSyncing(), 10000);
+        QCOMPARE(engine.pendingChanges(), 1);
+        QVERIFY(engine.accountError(account).contains("Backwards"_L1));
+
+        // No longer once the event is gone.
+        const QVariantMap data = find(engine, u"Backwards"_s);
+        QVERIFY(engine.deleteEvent(data.value(u"collectionId"_s).toString(), data.value(u"href"_s).toString(), {}, true) != 0);
+        QTRY_COMPARE(engine.pendingChanges(), 0);
+        QCOMPARE(engine.accountError(account), QString());
     }
 
     void saysWhenTheSignInIsNoLongerGood()

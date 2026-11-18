@@ -191,6 +191,21 @@ QJsonArray recurrenceLines(const Event::Ptr &event)
     return lines;
 }
 
+/// @p json without what is null in it. In a change, null takes a field away;
+/// in a new event there is nothing to take away.
+QJsonObject withoutNulls(const QJsonObject &json)
+{
+    QJsonObject result;
+    for (auto it = json.begin(); it != json.end(); ++it) {
+        if (it.value().isObject()) {
+            result.insert(it.key(), withoutNulls(it.value().toObject()));
+        } else if (!it.value().isNull()) {
+            result.insert(it.key(), it.value());
+        }
+    }
+    return result;
+}
+
 QString describe(QNetworkReply *reply, int status, const QJsonObject &answer)
 {
     if (status == 0) {
@@ -409,9 +424,10 @@ void GoogleClient::put(const QUrl &url, const QByteArray &ics, const QString &et
         return;
     }
     if (etag.isEmpty()) {
-        QJsonObject body = toJson(master);
+        // Named by its address only: Google takes a name or a UID for a new
+        // event, not both, and makes the UID of the name.
+        QJsonObject body = withoutNulls(toJson(master));
         body.insert("id"_L1, idOf(url));
-        body.insert("iCalUID"_L1, master->uid());
         send("POST", collection, {}, body, [done](const DavReply &reply, const QJsonObject &) {
             done(reply);
         });

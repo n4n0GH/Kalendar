@@ -6,8 +6,10 @@
     fakegoogle.py PORT [SECONDS]
 
 Like Google it wants a token ("Bearer test-token-…"), tells versions apart
-by etag, refuses changes to calendars that are shared for reading, and
-lists the changed appearances of a repeating event as events of their own.
+by etag, refuses changes to calendars that are shared for reading, takes a
+new event with a name or with a UID but not with both, takes none that ends
+before it starts, and lists the changed appearances of a repeating event as
+events of their own.
 Two things are for tests only: PUT /control/CALENDAR/EVENT stores an event
 exactly as given, as if changed elsewhere, and events are listed two at a
 time, so that asking for the next page is tried too. With SECONDS, it takes
@@ -18,6 +20,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -47,6 +50,16 @@ def merge(event, changes):
             event[key] = {k: v for k, v in value.items() if v is not None}
         else:
             event[key] = value
+
+
+def backwards(event):
+    start, end = event.get("start", {}), event.get("end", {})
+    if "date" in start and "date" in end:
+        return end["date"] <= start["date"]
+    if "dateTime" in start and "dateTime" in end:
+        moments = [datetime.fromisoformat(time["dateTime"].replace("Z", "+00:00")) for time in (start, end)]
+        return moments[1] < moments[0]
+    return False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -105,10 +118,14 @@ class Handler(BaseHTTPRequestHandler):
             name = body.get("id")
             if not name or not re.fullmatch(r"[0-9a-v]{5,1024}", name):
                 return self.fail(400, "invalid")
+            if "iCalUID" in body:
+                return self.fail(400, "invalid")
             if name in events:
                 return self.fail(409, "duplicate")
-            event = {"id": name}
+            event = {"id": name, "iCalUID": name + "@google.com"}
             merge(event, body)
+            if backwards(event):
+                return self.fail(400, "timeRangeEmpty")
             events[name] = stamp(event)
             return self.answer(200, events[name])
         if len(parts) != 4:
