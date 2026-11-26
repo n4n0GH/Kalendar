@@ -36,6 +36,11 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.7.1" date="2026-11-26">
+      <description>
+        <p>Kalendar tidies up after itself in the system's calendars. Akonadi keeps a copy of a calendar as it was for every change another program makes to it, and never clears those away. For the calendars Kalendar changed, it now removes the copies that are older than 30 days, and always leaves the newest five.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-11-26">
       <description>
         <p>Kalendar and the other calendar programs of the system share more:</p>
