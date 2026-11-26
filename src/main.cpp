@@ -4,12 +4,12 @@
 #include "backend.h"
 #include "engine.h"
 #include "kalendar-version.h"
-#include "clockplugin.h"
 #include "desktopcolors.h"
 #include "onlineaccounts.h"
 #include "secretstore.h"
 #include "singleinstance.h"
 #include "systemcalendars.h"
+#include "systemexport.h"
 
 #include <KAboutData>
 #include <KColorSchemeManager>
@@ -179,11 +179,20 @@ int main(int argc, char **argv)
     }
     SecretStore secrets(testMode);
     OnlineAccounts online(testMode);
+    // Kalendar's events for other programs of the system, which hands its
+    // own calendars to Kalendar in turn: all but that one.
+    const QString exportFile = dataDirectory + u"/kalendar.ics"_s;
     SystemCalendars system(testMode);
+    system.leaveOut(exportFile);
     Backend backend(&engine, &secrets, &online, &system);
     Backend::setInstance(&backend);
-    // An installed plugin is to be of this version of Kalendar.
-    ClockPlugin().refresh();
+    // Tests talk to no Akonadi but one that is named, which is not the desktop's.
+    SystemExport systemExport(&engine, exportFile, testMode && !qEnvironmentVariableIsSet("AKONADI_INSTANCE"));
+    SystemExport::setInstance(&systemExport);
+    // Earlier versions installed a plugin for Plasma's clock instead. In a
+    // Flatpak the settings folder is the app's own; the system's is named.
+    const bool pluginRetired =
+        !testMode && SystemExport::retireClockPlugin(QDir::homePath(), qEnvironmentVariable("HOST_XDG_CONFIG_HOME", QDir::homePath() + u"/.config"_s));
 
     QQmlApplicationEngine qml;
     KLocalization::setupLocalizedContext(&qml);
@@ -221,6 +230,13 @@ int main(int argc, char **argv)
     QTimer::singleShot(0, &backend, [&backend, files] {
         backend.openFiles(files, QDir::currentPath());
     });
+
+    if (pluginRetired) {
+        // Once the window is there to say it.
+        QTimer::singleShot(1000, &backend, [&backend] {
+            Q_EMIT backend.notice(i18nc("@info", "The plugin for the clock in the panel is gone. The settings have another way to show events there."));
+        });
+    }
 
     if (testMode) {
         setUpTestMode(engine, qml);

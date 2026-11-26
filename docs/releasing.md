@@ -168,15 +168,3 @@ None of the above exists until this has been done once.
    Keep `kalendar-flatpak-secret-key.asc` somewhere safe, and out of the
    repository.
 5. Publish the first release as described at the top.
-
-## What the Flatpak cannot do
-
-The plugin for the calendar of Plasma's clock belongs to the system's Plasma
-and cannot come in a Flatpak. Installed from the source tree, it also finds
-the events of a Kalendar that is installed as a Flatpak:
-
-```sh
-cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
-cmake --build build --target kalendarevents
-sudo cmake --install build --component plasmaplugin
-```

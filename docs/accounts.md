@@ -18,8 +18,8 @@ gives the engine a function (`Backend::authorize()`) that produces the
 | The system's | `System` | nothing | |
 
 The last one is not added by the user: it is there while Akonadi shows
-calendar files, holds them as calendars that can only be read, and cannot be
-removed in the settings. See [The calendars of the system](system-calendars.md).
+calendar files, holds them as calendars (to change, where Akonadi lets
+them be changed), and cannot be removed in the settings. See [The calendars of the system](system-calendars.md).
 
 Headers are remembered in memory until Kalendar quits (tokens until they
 expire), so the wallet and the sign-in service are asked once, not at every

@@ -46,20 +46,13 @@ bool Database::run(const QString &sql, const QVariantList &values) const
     return true;
 }
 
-bool Database::open(const QString &path, bool readOnly)
+bool Database::open(const QString &path)
 {
     m_db = QSqlDatabase::addDatabase(u"QSQLITE"_s, m_connection);
     m_db.setDatabaseName(path);
-    if (readOnly) {
-        m_db.setConnectOptions(u"QSQLITE_OPEN_READONLY"_s);
-    }
     if (!m_db.open()) {
         m_error = m_db.lastError().text();
         return false;
-    }
-    if (readOnly) {
-        // Proves that it is a database of ours, which opening alone does not.
-        return run(u"SELECT count(*) FROM items"_s);
     }
     // "Normal" is as safe as can be with this kind of journal, short of
     // waiting for the disk after every single change.

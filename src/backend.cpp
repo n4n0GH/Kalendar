@@ -115,6 +115,8 @@ QVariant CalendarListModel::data(const QModelIndex &index, int role) const
         const Collection *previous = index.row() > 0 ? m_engine->collection(m_ids.at(index.row() - 1)) : nullptr;
         return !previous || previous->accountId != collection->accountId;
     }
+    case ReadOnlyRole:
+        return collection->readOnly;
     }
     return {};
 }
@@ -130,6 +132,7 @@ QHash<int, QByteArray> CalendarListModel::roleNames() const
         {AccountIdRole, "accountId"},
         {AccountKindRole, "accountKind"},
         {FirstOfAccountRole, "firstOfAccount"},
+        {ReadOnlyRole, "readOnly"},
     };
 }
 
@@ -221,8 +224,8 @@ QVariantList Backend::accounts() const
             description = i18ncp("@info %2 is the name of a server", "%2, %1 calendar", "%2, %1 calendars", calendars, account.url.host());
         } else if (account.type == Account::System) {
             description = i18ncp("@info Akonadi is the name of the service that keeps the calendars of KDE’s other programs",
-                                 "Shown as Akonadi has it, %1 calendar",
-                                 "Shown as Akonadi has them, %1 calendars",
+                                 "Shared with Akonadi, %1 calendar",
+                                 "Shared with Akonadi, %1 calendars",
                                  calendars);
         }
         result.append(QVariantMap{

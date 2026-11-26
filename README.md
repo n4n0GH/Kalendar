@@ -13,14 +13,15 @@ A simple calendar for KDE Plasma that works with online accounts.
 - Google Calendar, through the Google accounts the system is signed in to, and any service that offers CalDAV: Nextcloud,
   iCloud, Fastmail, Radicale, and others.
 - A calendar that is kept on this system only, so the app is usable from the first start.
-- The calendars other programs keep on this system, to look at: the calendar files that Akonadi shows, such as
-  KOrganizer's, with to-dos on the day they are due.
+- The calendars other programs keep on this system: the calendar files that Akonadi shows, such as KOrganizer's, with
+  to-dos on the day they are due. Events in them can be added and changed where Akonadi lets them be.
+- A lock in the sidebar on every calendar that can only be looked at.
 - Events can be added, changed and deleted without a network; they are sent on at the next synchronization.
 - Repeating events (every day, week, month or year); other rhythms made elsewhere are shown and kept.
 - A click on an event shows it to read, with notes written as HTML shown as such; editing is one step further.
 - Calendar files (`.ics`) can be imported: from the menu, by dropping them on the window, or by opening them from the
   file manager.
-- Events in the calendar of Plasma's clock, with a plugin that is installed from the settings.
+- Its events in KOrganizer, Merkuro and the calendar of Plasma's clock, by handing them to Akonadi from the settings.
 - Settings for 12 or 24 hours, the first day of the week, and week numbers.
 - Follows the system's colour scheme, fonts and locale, and reshapes itself for narrow windows and phones.
 
@@ -51,7 +52,7 @@ On openSUSE Tumbleweed:
 ```sh
 sudo zypper install cmake ninja gcc-c++ kf6-extra-cmake-modules qt6-base-devel qt6-declarative-devel qt6-quick-devel \
     qt6-quickcontrols2-devel qt6-sql-devel qt6-sql-sqlite \
-    kf6-kirigami-devel kf6-kcalendarcore-devel kf6-ki18n-devel kf6-kcoreaddons-devel kf6-kcolorscheme-devel kf6-kwallet-devel kf6-kdeclarative-devel
+    kf6-kirigami-devel kf6-kcalendarcore-devel kf6-ki18n-devel kf6-kcoreaddons-devel kf6-kcolorscheme-devel kf6-kwallet-devel
 ```
 
 ```sh
@@ -60,39 +61,41 @@ cmake --build build
 build/bin/kalendar
 ```
 
-## In the calendar of Plasma's clock
+## In other calendar programs, and in Plasma's clock
 
-Kalendar comes with a plugin that shows its events in the calendar that opens from the clock in the panel. It is
-installed from Kalendar itself: **Settings**, **Install Plugin**. That needs no administrator and works from the Flatpak
-too: a copy of the plugin goes to `~/.local/lib/kalendar/plugins`, and a line in
-`~/.config/plasma-workspace/env/kalendar-clock-plugin.sh` tells Plasma at login to look there. **Remove Plugin** takes
-both away again, and a newer Kalendar replaces the copy by itself.
+Kalendar can hand its events to the system: **Settings**, **Add to the System's Calendars**. The events of the
+calendars that are shown in Kalendar then become one calendar of Akonadi, named *Kalendar*, which KOrganizer and Merkuro
+show, and the calendar that opens from the clock in the panel too. For the clock, switch on Plasma's own plugin once:
+right-click the clock, **Configure Digital Clock…**, **Calendar**, and tick **PIM Events Plugin**.
 
-After logging out and in, switch it on: right-click the clock, **Configure Digital Clock…**, **Calendar**, and tick
-**Kalendar**.
+The calendar can be looked at there, not changed, and follows Kalendar by itself. Events from servers are as fresh as
+Kalendar's last synchronization, so Kalendar has to run now and then. **Remove from the System's Calendars** takes it
+away again.
 
-Plasma loads the plugin into itself, so a plugin from the Flatpak only works where the system's Qt and KDE Frameworks
-are at least as new as the Flatpak's, and where the system has KCalendarCore. Packagers can install it with the system
-instead (it is built when `kf6-kdeclarative-devel` is installed):
+This needs Akonadi, and its agent for calendar files, to be installed (`akonadi`, `kdepim-runtime`; for the clock,
+`kdepim-addons`). Kalendar keeps the events as a calendar file in its data folder and asks Akonadi over the session bus
+to show that file (`src/systemexport.*`); nothing of Akonadi is linked, and it works from the Flatpak.
 
-```sh
-sudo cmake --install build --component plasmaplugin
-```
-
-The plugin only reads. It shows the calendars that are shown in Kalendar, and follows changes made there by itself.
-Events from servers are as fresh as Kalendar's last synchronization, so Kalendar has to run now and then.
+Earlier versions installed a plugin of their own into Plasma's clock instead. It is gone: Kalendar removes the copy it
+installed at its next start, which takes effect at the next login.
 
 ## The calendars of the system
 
 KOrganizer, Merkuro and the calendar of Plasma's clock share their calendars through Akonadi. Kalendar shows those of
 them that are calendar files, under **System Calendars** in the sidebar: KOrganizer's own calendar, and whatever a
-program or the user added to the system as a calendar file. They appear by themselves wherever Akonadi runs, follow the
-files as they change, and can only be looked at; a to-do that is open is shown on the day it is due.
+program or the user added to the system as a calendar file. They appear by themselves wherever Akonadi runs and follow
+the files as they change; a to-do that is open is shown on the day it is due.
 
-Kalendar asks Akonadi on the session bus which files it shows and reads those files (`src/systemcalendars.*`); nothing
-of Akonadi is linked, so it works from the Flatpak too, which may read the home folder for this. Calendars that Akonadi
-fetches from a server are not shown: add the account to Kalendar instead. Plasma's clock has Akonadi's calendars from
-its own plugin, so Kalendar's plugin leaves them out.
+A calendar that Akonadi lets be changed can be changed in Kalendar too: events are added, changed and deleted in it as
+in any other, and KOrganizer and the others show the result a moment later. To-dos are only shown. Calendars that
+Akonadi has set to read only, or whose file cannot be written, carry a lock in the sidebar, as do calendars of servers
+that cannot be changed.
+
+Kalendar asks Akonadi on the session bus which files it shows, reads those files and writes changed events into them
+(`src/systemcalendars.*`, `src/core/engine.*`); nothing of Akonadi is linked, so it works from the Flatpak too, which
+may read and write the home folder for this. Akonadi keeps a copy of a calendar as it was whenever another program
+changes its file, in `~/.local/share/akonadi_ical_resource_<number>/`: one for every change made in Kalendar. Calendars
+that Akonadi fetches from a server are not shown: add the account to Kalendar instead.
 
 ## Google accounts
 
@@ -132,12 +135,12 @@ a few example events, keeps its data apart (in `~/.qttest`), and leaves the wall
 | `src/backend.*` | What the interface asks of the calendars; adds signing in and settings. |
 | `src/onlineaccounts.*`, `src/secretstore.*` | The Google accounts of the system's Online Accounts; passwords in KWallet. |
 | `src/systemcalendars.*` | Which calendar files Akonadi shows. |
-| `src/clockplugin.*`, `src/plasma/` | Installing the plugin for the calendar of Plasma's clock, and the plugin. |
+| `src/systemexport.*` | Handing Kalendar's events to Akonadi as a calendar file. |
 | `src/qml/` | The interface. |
 | `autotests/` | Tests for the above. |
 
 The [code documentation](docs/README.md) goes into each of these: architecture, synchronization, accounts and signing
-in, the calendars of the system, the interface, the clock plugin, and how to build, test and extend it.
+in, the calendars of the system, the interface, and how to build, test and extend it.
 
 ## Not there yet
 

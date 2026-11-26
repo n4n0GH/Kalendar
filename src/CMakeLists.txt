@@ -13,8 +13,6 @@ add_library(kalendarcore STATIC
     core/googleclient.h
     core/types.h
 )
-# It also goes into a plugin.
-set_target_properties(kalendarcore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(kalendarcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core)
 target_compile_definitions(kalendarcore PRIVATE TRANSLATION_DOMAIN="kalendar")
 target_link_libraries(kalendarcore
@@ -26,8 +24,6 @@ add_executable(kalendar
     main.cpp
     backend.cpp
     backend.h
-    clockplugin.cpp
-    clockplugin.h
     desktopcolors.cpp
     desktopcolors.h
     onlineaccounts.cpp
@@ -38,6 +34,8 @@ add_executable(kalendar
     singleinstance.h
     systemcalendars.cpp
     systemcalendars.h
+    systemexport.cpp
+    systemexport.h
 )
 
 ecm_add_qml_module(kalendar
@@ -68,7 +66,7 @@ ecm_target_qml_sources(kalendar SOURCES
 )
 
 target_include_directories(kalendar PRIVATE ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_definitions(kalendar PRIVATE TRANSLATION_DOMAIN="kalendar" KALENDAR_PLUGIN_DIR="${KDE_INSTALL_FULL_PLUGINDIR}")
+target_compile_definitions(kalendar PRIVATE TRANSLATION_DOMAIN="kalendar")
 target_link_libraries(kalendar PRIVATE
     kalendarcore
     Qt6::Core
@@ -87,15 +85,3 @@ target_link_libraries(kalendar PRIVATE
 )
 
 install(TARGETS kalendar ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
-
-# Shows the events in the calendar of Plasma's clock, where it is switched
-# on in the clock's settings under "Calendar".
-if(BUILD_PLASMA_PLUGIN AND TARGET KF6::CalendarEvents)
-    add_library(kalendarevents MODULE
-        plasma/kalendareventsplugin.cpp
-        plasma/kalendareventsplugin.h
-    )
-    target_link_libraries(kalendarevents PRIVATE kalendarcore KF6::CalendarEvents)
-    set_target_properties(kalendarevents PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plasmacalendarplugins)
-    install(TARGETS kalendarevents DESTINATION ${KDE_INSTALL_PLUGINDIR}/plasmacalendarplugins COMPONENT plasmaplugin)
-endif()

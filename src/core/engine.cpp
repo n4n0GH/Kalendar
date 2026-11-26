@@ -18,6 +18,7 @@
 #include <QFileSystemWatcher>
 #include <QNetworkAccessManager>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QTimeZone>
 #include <QTimer>
 #include <QUuid>
@@ -33,6 +34,8 @@ const QString LocalAccountId = u"local"_s;
 const QString SystemAccountId = u"system"_s;
 /// Marks an event that stands for a to-do.
 const QByteArray TodoProperty = "X-KALENDAR-TODO";
+/// Where in a calendar an entry of a calendar file of the system is kept.
+const QLatin1StringView SystemHref("system:");
 
 QString newId()
 {
@@ -52,6 +55,14 @@ Event::Ptr masterOf(const Event::List &events)
         }
     }
     return {};
+}
+
+/// Whether these stand for a to-do of a calendar of the system.
+bool isTodo(const Event::List &events)
+{
+    return std::any_of(events.cbegin(), events.cend(), [](const Event::Ptr &event) {
+        return !event->nonKDECustomProperty(TodoProperty).isEmpty();
+    });
 }
 
 /// How an event repeats, as one of the choices offered when editing.
@@ -173,26 +184,14 @@ bool Engine::open(const QString &path)
     load();
     // What was deleted on this system just before the last quit is cleared
     // away now; for servers, the first synchronization does the same.
-    for (const Collection &collection : std::as_const(m_collections)) {
-        if (collection.accountId == LocalAccountId) {
+    const QList<Collection> collections = m_collections;
+    for (const Collection &collection : collections) {
+        if (collection.accountId == LocalAccountId || collection.accountId == SystemAccountId) {
             push(collection.id);
         }
     }
     // The system's calendar files may have changed while Kalendar did not run.
     readSystemCalendars();
-    return true;
-}
-
-bool Engine::openReadOnly(const QString &path)
-{
-    m_readOnly = true;
-    if (!m_db.open(path, true)) {
-        return false;
-    }
-    m_accounts = m_db.accounts();
-    nameAccounts();
-    m_collections = m_db.collections();
-    load();
     return true;
 }
 
@@ -326,7 +325,7 @@ void Engine::removeAccount(const QString &id)
 {
     // The calendars of this system are not the user's to remove here.
     const Account *found = account(id);
-    if (m_readOnly || !found || found->type == Account::Local || found->type == Account::System) {
+    if (!found || found->type == Account::Local || found->type == Account::System) {
         return;
     }
     eraseAccount(id);
@@ -362,7 +361,7 @@ void Engine::eraseAccount(const QString &id)
 void Engine::setCollectionEnabled(const QString &id, bool enabled)
 {
     Collection *found = findCollection(id);
-    if (m_readOnly || !found || found->enabled == enabled) {
+    if (!found || found->enabled == enabled) {
         return;
     }
     found->enabled = enabled;
@@ -578,6 +577,7 @@ QVariantMap Engine::toVariant(const Occurrence &occurrence) const
     const Collection *found = collection(occurrence.collectionId);
     const Event::Ptr master = event->hasRecurrenceId() ? masterOf(m_state.value(occurrence.collectionId).items.value(occurrence.href).events) : event;
     const QString summary = event->summary().trimmed();
+    const bool todo = !event->nonKDECustomProperty(TodoProperty).isEmpty();
     return {
         {u"key"_s, QString(occurrence.href + u'#' + QString::number(occurrence.start.toMSecsSinceEpoch()))},
         {u"collectionId"_s, occurrence.collectionId},
@@ -593,7 +593,8 @@ QVariantMap Engine::toVariant(const Occurrence &occurrence) const
         {u"color"_s, found ? found->color : QColor()},
         {u"calendarName"_s, found ? found->name : QString()},
         {u"accountName"_s, found && account(found->accountId) ? account(found->accountId)->name : QString()},
-        {u"readOnly"_s, found && found->readOnly},
+        // A to-do is only shown, whatever its calendar lets be done.
+        {u"readOnly"_s, (found && found->readOnly) || todo},
         {u"repeats"_s, event->recurs() || event->hasRecurrenceId()},
         {u"repeat"_s, event->hasRecurrenceId() ? u"exception"_s : repeatKind(event)},
         // Which appearance of a repeating event this is.
@@ -601,7 +602,7 @@ QVariantMap Engine::toVariant(const Occurrence &occurrence) const
         {u"slot"_s, event->hasRecurrenceId() ? event->recurrenceId() : occurrence.start},
         {u"seriesRepeats"_s, master && master->recurs()},
         // A to-do, shown when it is due.
-        {u"todo"_s, !event->nonKDECustomProperty(TodoProperty).isEmpty()},
+        {u"todo"_s, todo},
     };
 }
 
@@ -780,9 +781,6 @@ QVariantList Engine::dayLayout(const QDate &day) const
 ///                         to leave the repetition as it is
 QString Engine::saveEvent(const QVariantMap &data)
 {
-    if (m_readOnly) {
-        return i18nc("@info", "The calendars can only be looked at here.");
-    }
     const Collection *target = collection(data.value(u"collectionId"_s).toString());
     if (!target) {
         return i18nc("@info", "The calendar no longer exists. Choose another one.");
@@ -804,6 +802,9 @@ QString Engine::saveEvent(const QVariantMap &data)
     QString etag;
     if (!href.isEmpty() && m_state.value(originalCollectionId).items.contains(href)) {
         const Item item = m_state.value(originalCollectionId).items.value(href);
+        if (isTodo(item.events)) {
+            return i18nc("@info", "A to-do is only shown here. Change it in the program it is from.");
+        }
         etag = item.etag;
         const QDateTime recurrenceId = data.value(u"recurrenceId"_s).toDateTime();
         for (const Event::Ptr &existing : item.events) {
@@ -904,7 +905,7 @@ QString Engine::newHref(const Collection &target, const QString &uid) const
     case Account::Google:
         return GoogleClient::hrefFor(target.url, uid);
     case Account::System:
-        break; // nothing is ever added to these
+        return SystemHref + uid;
     }
     return {};
 }
@@ -1016,9 +1017,6 @@ QString Engine::importEvents(const QString &collectionId, const QByteArray &ics,
     if (imported) {
         *imported = 0;
     }
-    if (m_readOnly) {
-        return i18nc("@info", "The calendars can only be looked at here.");
-    }
     const Collection *target = collection(collectionId);
     if (!target) {
         return i18nc("@info", "The calendar no longer exists. Choose another one.");
@@ -1058,16 +1056,17 @@ QString Engine::importEvents(const QString &collectionId, const QByteArray &ics,
 
 int Engine::deleteEvent(const QString &collectionId, const QString &href, const QDateTime &slot, bool wholeSeries)
 {
-    if (m_readOnly || !m_state.contains(collectionId) || !m_state[collectionId].items.contains(href)) {
-        return 0;
-    }
-    // A calendar of the system is a file of another program's.
-    const Collection *owner = collection(collectionId);
-    if (!owner || owner->accountId == SystemAccountId) {
+    if (!m_state.contains(collectionId) || !m_state[collectionId].items.contains(href)) {
         return 0;
     }
     State &state = m_state[collectionId];
     const Item before = state.items.value(href);
+    // No server would refuse it for a calendar of the system that cannot be
+    // changed; and a to-do is only shown here.
+    const Collection *owner = collection(collectionId);
+    if (!owner || (owner->accountId == SystemAccountId && owner->readOnly) || isTodo(before.events)) {
+        return 0;
+    }
     const Event::Ptr master = masterOf(before.events);
     const bool whole = wholeSeries || !master || !master->recurs() || !slot.isValid();
 
@@ -1132,9 +1131,112 @@ namespace
 /// Goes up when the files are read into something else than before, which
 /// has every one of them read again.
 const QLatin1StringView SystemReading("1:");
-/// Where in a calendar an entry of a calendar file is kept.
-const QLatin1StringView SystemHref("system:");
 constexpr int SettleMilliseconds = 300;
+
+bool startsWith(QByteArrayView line, QByteArrayView word)
+{
+    return line.first(std::min(line.size(), word.size())).compare(word, Qt::CaseInsensitive) == 0;
+}
+
+/// What is directly within the calendar of a calendar file: an event, a
+/// to-do, a time zone.
+struct Part {
+    /// VEVENT, VTIMEZONE and so on.
+    QByteArray kind;
+    /// As it is written, its lines ending the way calendar files have it.
+    QByteArray text;
+    /// Of an event or a to-do, as it is written.
+    QByteArray uid;
+    /// Of a time zone: the line that names it.
+    QByteArray zone;
+};
+
+/// Goes through a calendar file as text, without making sense of more than
+/// its structure: @p part gets each part of the calendar, whole, and
+/// @p other every other line, with whether it is the one that closes the
+/// calendar. Nothing is lost between the two.
+void scan(const QByteArray &ics, const std::function<void(const Part &)> &part, const std::function<void(QByteArrayView line, bool closes)> &other = {})
+{
+    // Parts are within the calendar, and may have parts of their own.
+    int depth = 0;
+    Part current;
+    bool inUid = false;
+    qsizetype position = 0;
+    while (position < ics.size()) {
+        qsizetype end = ics.indexOf('\n', position);
+        if (end < 0) {
+            end = ics.size();
+        }
+        QByteArrayView line(ics.constData() + position, end - position);
+        position = end + 1;
+        if (line.endsWith('\r')) {
+            line.chop(1);
+        }
+        if (startsWith(line, "BEGIN:") && ++depth == 2) {
+            current = Part();
+            current.kind = line.sliced(6).trimmed().toByteArray().toUpper();
+        }
+        if (depth < 2) {
+            if (other && !(line.isEmpty() && position >= ics.size())) {
+                other(line, depth == 1 && startsWith(line, "END:"));
+            }
+            if (depth == 1 && startsWith(line, "END:")) {
+                depth = 0;
+            }
+            continue;
+        }
+        current.text += line;
+        current.text += "\r\n";
+        // A long line goes on in the next, which then starts with a blank.
+        const bool goesOn = line.startsWith(' ') || line.startsWith('\t');
+        if (depth == 2 && inUid && goesOn) {
+            current.uid += line.sliced(1);
+        } else if (depth == 2 && (startsWith(line, "UID:") || startsWith(line, "UID;"))) {
+            current.uid = line.sliced(line.indexOf(':') + 1).toByteArray();
+            inUid = true;
+        } else {
+            inUid = false;
+            if (depth == 2 && startsWith(line, "TZID")) {
+                current.zone = line.toByteArray();
+            }
+        }
+        if (startsWith(line, "END:") && depth-- == 2) {
+            part(current);
+        }
+    }
+}
+
+/// Takes the events and the time zones out of a calendar file, as they are
+/// written there. A time zone that is among @p zones already is not taken
+/// again.
+void takeParts(const QByteArray &ics, QByteArrayList *zones, QSet<QByteArray> *zoneNames, QByteArrayList *events)
+{
+    scan(ics, [&](const Part &part) {
+        if (part.kind == "VEVENT") {
+            events->append(part.text);
+        } else if (part.kind == "VTIMEZONE" && !zoneNames->contains(part.zone)) {
+            zoneNames->insert(part.zone);
+            zones->append(part.text);
+        }
+    });
+}
+
+/// A UID as it is written in a calendar file, where some characters stand
+/// behind a backslash.
+QByteArray written(const QString &uid)
+{
+    QByteArray text = uid.toUtf8();
+    text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n");
+    return text;
+}
+
+/// Whether a calendar file can be written: the file, or, where there is
+/// none yet, the folder it is to be in.
+bool canWrite(const QString &path)
+{
+    const QFileInfo file(path);
+    return file.exists() ? file.isFile() && file.isWritable() && QFileInfo(file.absolutePath()).isWritable() : QFileInfo(file.absolutePath()).isWritable();
+}
 
 /// The files of a calendar of the system: the file itself, or, where
 /// each entry has a file of its own, those in the folder.
@@ -1157,9 +1259,6 @@ QStringList filesOf(const QString &path)
 
 void Engine::setSystemCalendars(const QList<CalendarInfo> &calendars, bool complete)
 {
-    if (m_readOnly) {
-        return;
-    }
     QList<CalendarInfo> wanted;
     for (CalendarInfo info : calendars) {
         const bool listed = std::any_of(wanted.cbegin(), wanted.cend(), [&](const CalendarInfo &other) {
@@ -1168,9 +1267,11 @@ void Engine::setSystemCalendars(const QList<CalendarInfo> &calendars, bool compl
         if (listed || !info.url.isLocalFile()) {
             continue;
         }
-        // They are another program's to write, whatever it lets others do,
-        // and have no colour of their own.
-        info.readOnly = true;
+        // Changed only where the system lets its calendar be changed and
+        // the file can be written; a folder of files is only read. They
+        // have no colour of their own.
+        const QString path = info.url.toLocalFile();
+        info.readOnly = info.readOnly || QFileInfo(path).isDir() || !canWrite(path);
         info.color = QColor();
         wanted.append(info);
     }
@@ -1183,7 +1284,7 @@ void Engine::setSystemCalendars(const QList<CalendarInfo> &calendars, bool compl
                 CalendarInfo kept;
                 kept.url = collection.url;
                 kept.name = collection.name;
-                kept.readOnly = true;
+                kept.readOnly = collection.readOnly;
                 wanted.append(kept);
             }
         }
@@ -1211,7 +1312,7 @@ void Engine::setSystemCalendars(const QList<CalendarInfo> &calendars, bool compl
 
 void Engine::readSystemCalendars()
 {
-    if (m_readOnly || !account(SystemAccountId)) {
+    if (!account(SystemAccountId)) {
         return;
     }
     QStringList ids;
@@ -1296,14 +1397,18 @@ bool Engine::readSystemCalendar(const QString &collectionId, QString *error)
     bool changed = false;
     const QStringList known = state.items.keys();
     m_db.begin();
+    // What was changed here and is not in the file yet is left alone.
     for (const QString &href : known) {
-        if (!wanted.contains(href)) {
+        if (!wanted.contains(href) && state.items.value(href).dirty == ItemRecord::Clean) {
             dropItem(collectionId, href);
             changed = true;
         }
     }
     for (auto it = wanted.cbegin(); it != wanted.cend(); ++it) {
         const auto item = state.items.constFind(it.key());
+        if (item != state.items.cend() && item->dirty != ItemRecord::Clean) {
+            continue;
+        }
         if (item == state.items.cend() || item->ics != it.value()) {
             setItem(collectionId, it.key(), {}, it.value(), ItemRecord::Clean);
             changed = true;
@@ -1313,6 +1418,117 @@ bool Engine::readSystemCalendar(const QString &collectionId, QString *error)
     m_db.saveCollection(*found);
     m_db.commit();
     return changed;
+}
+
+bool Engine::writeSystemCalendar(const QString &collectionId, const QStringList &pending)
+{
+    Collection *found = findCollection(collectionId);
+    if (!found) {
+        return false;
+    }
+    State &state = m_state[collectionId];
+    if (found->readOnly) {
+        // It could be changed when the change was made, and cannot be now:
+        // the file says what is so.
+        m_db.begin();
+        for (const QString &href : pending) {
+            dropItem(collectionId, href);
+        }
+        found->ctag.clear();
+        m_db.saveCollection(*found);
+        m_db.commit();
+        Q_EMIT notice(i18nc("@info", "The calendar “%1” cannot be changed, so the change was taken back.", found->name));
+        return true;
+    }
+    const QString path = found->url.toLocalFile();
+    const auto fail = [&](const QString &why) {
+        for (const QString &href : pending) {
+            state.failed.insert(href, i18nc("@info %1 is the name of a calendar, %2 says what went wrong", "The calendar “%1” could not be changed. %2", found->name, why));
+        }
+        return false;
+    };
+
+    // The file as it is right now: another program may have written to it
+    // a moment ago, and all of that stays but the events changed here.
+    QByteArray content;
+    QFile file(path);
+    if (file.exists()) {
+        if (!file.open(QIODevice::ReadOnly)) {
+            return fail(file.errorString());
+        }
+        content = file.readAll();
+        file.close();
+    }
+    if (content.trimmed().isEmpty()) {
+        content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//io.github.n4n0gh//Kalendar//EN\r\nEND:VCALENDAR\r\n";
+    }
+
+    // What goes: the events changed or deleted here, as they are in the
+    // file. What comes: the changed ones as they are now, with the time
+    // zones they need.
+    QSet<QByteArray> going;
+    QByteArrayList zones;
+    QSet<QByteArray> zoneNames;
+    QByteArrayList events;
+    for (const QString &href : pending) {
+        const Item item = state.items.value(href);
+        going.insert(written(item.events.isEmpty() ? href.mid(SystemHref.size()) : item.events.first()->uid()));
+        if (item.dirty == ItemRecord::Changed) {
+            takeParts(item.ics, &zones, &zoneNames, &events);
+        }
+    }
+    QByteArray out;
+    QSet<QByteArray> zonesThere;
+    bool added = false;
+    scan(
+        content,
+        [&](const Part &part) {
+            if (part.kind == "VEVENT" && going.contains(part.uid)) {
+                return;
+            }
+            if (part.kind == "VTIMEZONE") {
+                zonesThere.insert(part.zone);
+            }
+            out += part.text;
+        },
+        [&](QByteArrayView line, bool closes) {
+            if (closes && !added) {
+                added = true;
+                QByteArrayList needed;
+                QSet<QByteArray> names = zonesThere;
+                for (const QByteArray &zone : std::as_const(zones)) {
+                    takeParts("BEGIN:VCALENDAR\r\n" + zone + "END:VCALENDAR\r\n", &needed, &names, nullptr);
+                }
+                out += needed.join() + events.join();
+            }
+            out += line;
+            out += "\r\n";
+        });
+    if (!added) {
+        return fail(i18nc("@info %1 is a file", "“%1” is not a calendar file.", path));
+    }
+
+    // Beside it, and then in its place: whoever reads it never reads half.
+    QSaveFile save(path);
+    if (!save.open(QIODevice::WriteOnly) || save.write(out) != out.size() || !save.commit()) {
+        return fail(save.errorString());
+    }
+    m_db.begin();
+    for (const QString &href : pending) {
+        const Item item = state.items.value(href);
+        if (item.dirty == ItemRecord::Deleted) {
+            dropItem(collectionId, href);
+        } else {
+            setItem(collectionId, href, item.etag, item.ics, ItemRecord::Clean);
+        }
+    }
+    m_db.commit();
+    // What else is in the file by now is taken over along the way.
+    QString error;
+    if (readSystemCalendar(collectionId, &error)) {
+        Q_EMIT eventsChanged();
+    }
+    return true;
 }
 
 void Engine::watchSystemCalendars()
@@ -1354,6 +1570,91 @@ void Engine::watchSystemCalendars()
             m_watcher->addPath(path);
         }
     }
+}
+
+// A calendar file for other programs
+
+namespace
+{
+constexpr int ExportMilliseconds = 1000;
+}
+
+QByteArray Engine::exportedCalendar() const
+{
+    QByteArrayList zones;
+    QSet<QByteArray> zoneNames;
+    QByteArrayList events;
+    QSet<QString> uids;
+    for (const Collection &collection : m_collections) {
+        const auto state = m_state.constFind(collection.id);
+        if (!collection.enabled || collection.accountId == SystemAccountId || state == m_state.cend()) {
+            continue;
+        }
+        // In an order that stays, so that the file only changes when events do.
+        QStringList hrefs = state->items.keys();
+        hrefs.sort();
+        for (const QString &href : std::as_const(hrefs)) {
+            const Item &item = *state->items.constFind(href);
+            if (!item.shown || item.events.isEmpty()) {
+                continue;
+            }
+            // An event that is in two calendars is handed over once: other
+            // programs tell events apart by their UID.
+            const QString uid = item.events.first()->uid();
+            if (uids.contains(uid)) {
+                continue;
+            }
+            uids.insert(uid);
+            // As they are written, which keeps what Kalendar itself does not know of.
+            takeParts(item.ics, &zones, &zoneNames, &events);
+        }
+    }
+    return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//io.github.n4n0gh//Kalendar//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Kalendar\r\n" + zones.join()
+        + events.join() + "END:VCALENDAR\r\n";
+}
+
+bool Engine::setExportFile(const QString &path)
+{
+    m_exportFile = path;
+    if (path.isEmpty()) {
+        if (m_exportTimer) {
+            m_exportTimer->stop();
+        }
+        return false;
+    }
+    if (!m_exportTimer) {
+        m_exportTimer = new QTimer(this);
+        m_exportTimer->setSingleShot(true);
+        m_exportTimer->setInterval(ExportMilliseconds);
+        connect(m_exportTimer, &QTimer::timeout, this, &Engine::writeExport);
+        connect(this, &Engine::eventsChanged, this, [this] {
+            if (!m_exportFile.isEmpty()) {
+                m_exportTimer->start();
+            }
+        });
+    }
+    return writeExport();
+}
+
+bool Engine::writeExport()
+{
+    if (m_exportFile.isEmpty()) {
+        return false;
+    }
+    const QByteArray wanted = exportedCalendar();
+    QFile existing(m_exportFile);
+    if (existing.open(QIODevice::ReadOnly) && existing.readAll() == wanted) {
+        return true; // whoever reads the file is not made to read it again
+    }
+    existing.close();
+    QDir().mkpath(QFileInfo(m_exportFile).absolutePath());
+    // Beside it, and then in its place: nobody ever reads half a file.
+    QSaveFile file(m_exportFile);
+    if (!file.open(QIODevice::WriteOnly) || file.write(wanted) != wanted.size() || !file.commit()) {
+        qWarning("The calendar file for other programs could not be written: %s", qPrintable(file.errorString()));
+        return false;
+    }
+    return true;
 }
 
 // Synchronization
@@ -1403,11 +1704,18 @@ void Engine::syncAccount(const QString &id)
 {
     const Account *found = account(id);
     if (found && found->type == Account::System) {
-        // No server to ask: the files are at hand.
+        // No server to ask: the files are at hand. What could not be
+        // written before is tried again first.
+        const QList<Collection> collections = m_collections;
+        for (const Collection &collection : collections) {
+            if (collection.accountId == id) {
+                push(collection.id);
+            }
+        }
         readSystemCalendars();
         return;
     }
-    if (m_readOnly || !found || found->type == Account::Local || m_syncing.contains(id) || !m_auth) {
+    if (!found || found->type == Account::Local || m_syncing.contains(id) || !m_auth) {
         return;
     }
     m_syncing.insert(id, 0);
@@ -1590,6 +1898,14 @@ void Engine::push(const QString &collectionId, const std::function<void()> &done
             } else {
                 setItem(collectionId, href, item.etag, item.ics, ItemRecord::Clean);
             }
+        }
+        pushFinished(collectionId);
+        return;
+    }
+    if (owner->type == Account::System) {
+        // No server to send to: the file is at hand.
+        if (!pending.isEmpty()) {
+            writeSystemCalendar(collectionId, pending);
         }
         pushFinished(collectionId);
         return;

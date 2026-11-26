@@ -13,7 +13,7 @@ C++ objects created in `src/main.cpp`.
           │ CalendarPage ─ MonthView ─ WeekView ─ dialogs ─ SettingsPage  │
           └───────────────┬───────────────────────────────┬───────────────┘
                           │                               │
-                       Backend ── SecretStore ── KWallet  ClockPlugin
+                       Backend ── SecretStore ── KWallet  SystemExport ── Akonadi (D-Bus)
                           │   ├── OnlineAccounts ── accounts.db, signond
                           │   └── SystemCalendars ── Akonadi (D-Bus)
                           ▼
@@ -24,7 +24,7 @@ C++ objects created in `src/main.cpp`.
         (CalDAV       (Google's Calendar API)      (those Akonadi shows)
         servers)
 
-   Plasma's clock ── kalendarevents.so ── Engine (read-only) ── the same database
+   Akonadi ── kalendar.ics, which the engine writes while SystemExport wants it
 ```
 
 ## The parts
@@ -41,14 +41,12 @@ C++ objects created in `src/main.cpp`.
 | `OnlineAccounts` | `src/onlineaccounts.*` | The Google accounts of the system's Online Accounts, and tokens for them. |
 | `SystemCalendars` | `src/systemcalendars.*` | Which calendar files Akonadi shows, asked over D-Bus. The engine reads them. See [The calendars of the system](system-calendars.md). |
 | `SingleInstance` | `src/singleinstance.*` | Keeps Kalendar to one process, and hands that one the files another was started with. |
-| `ClockPlugin` | `src/clockplugin.*` | Installs the plugin for Plasma's clock for the user. |
-| `KalendarEventsPlugin` | `src/plasma/` | The plugin itself, which runs inside Plasma. |
+| `SystemExport` | `src/systemexport.*` | Has Akonadi show Kalendar's events, which the engine keeps as a calendar file for it. See [The calendars of the system](system-calendars.md#handing-kalendars-events-to-the-system). |
 
 `main()` creates the engine, the secret store, the Online Accounts reader,
 the finder of the system's calendars and the backend, in that order, and hands the backend to QML through a static
 `create()` that returns the existing instance (`QML_SINGLETON` with C++
-ownership). `ClockPlugin` depends on nothing and is created by the QML engine
-on first use.
+ownership). `SystemExport` is made in `main()` and handed to QML the same way.
 
 ## One Kalendar at a time
 
@@ -65,8 +63,8 @@ happens.
 ## The core library
 
 `src/core` builds as the static library `kalendarcore`. It has no GUI and
-knows nothing of wallets or settings, so it can be tested without a display,
-and it is what the clock plugin links to read the database. Signing in is
+knows nothing of wallets or settings, so it can be tested without a display.
+Signing in is
 handed to it as a function: `Engine::setAuthProvider()` takes a callback that
 is asked for the `Authorization` header of an account whenever one is needed.
 
@@ -75,8 +73,7 @@ writing iCalendar, time zones, and working out when repeating events happen.
 
 ## Threads
 
-The app has one, the main thread (the clock plugin has a second: see
-[The clock plugin](clock-plugin.md)). Network requests, D-Bus calls and the wallet are
+The app has one, the main thread. Network requests, D-Bus calls and the wallet are
 asynchronous through Qt's event loop; SQLite and the handling of calendar
 files are not, and are kept short. The one thing that was not short, writing
 hundreds of fetched events one by one, is done in a single transaction (see
@@ -90,10 +87,9 @@ hundreds of fetched events one by one, is done in a single transaction (see
 | Passwords of CalDAV accounts | KWallet, folder `Kalendar`, one entry per account id |
 | Google sign-ins | Not kept by Kalendar at all: the system's Online Accounts has them |
 | Settings | `kalendar.conf` in the config folder (`QSettings`, and QML's `Settings` for the window) |
-| The installed clock plugin | `~/.local/lib/kalendar/plugins/` and one line in `~/.config/plasma-workspace/env/` |
+| The events for other programs, while wanted | `kalendar.ics` next to the database |
 
-A native build and the Flatpak keep their data apart. The clock plugin reads
-whichever database was written last.
+A native build and the Flatpak keep their data apart.
 
 ### The database
 
@@ -111,8 +107,7 @@ spread over columns; the engine parses the files at start and keeps the
 result in memory. `dirty` says whether the item still has to be sent to its
 server (see [Synchronization](synchronization.md)).
 
-The journal is in WAL mode, which lets the clock plugin read while Kalendar
-writes.
+The journal is in WAL mode.
 
 ## Online services
 

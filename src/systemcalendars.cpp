@@ -26,10 +26,12 @@ const QString BusPath = u"/org/freedesktop/DBus"_s;
 struct Kind {
     QLatin1StringView name;
     QLatin1StringView settings;
+    /// One file, which can be written to, rather than a folder of them.
+    bool file;
 };
 constexpr Kind Kinds[] = {
-    {"akonadi_ical_resource"_L1, "org.kde.Akonadi.ICal.Settings"_L1},
-    {"akonadi_icaldir_resource"_L1, "org.kde.Akonadi.ICalDirectory.Settings"_L1},
+    {"akonadi_ical_resource"_L1, "org.kde.Akonadi.ICal.Settings"_L1, true},
+    {"akonadi_icaldir_resource"_L1, "org.kde.Akonadi.ICalDirectory.Settings"_L1, false},
 };
 
 constexpr int Timeout = 5000;
@@ -62,13 +64,13 @@ bool failed(const QDBusMessage &reply)
     return reply.type() != QDBusMessage::ReplyMessage;
 }
 
-CalendarInfo calendar(const QString &path, const QString &name)
+CalendarInfo calendar(const QString &path, const QString &name, bool readOnly)
 {
     CalendarInfo info;
     info.url = QUrl::fromLocalFile(QDir::cleanPath(path));
     // An agent may have no name; its file has one.
     info.name = name.trimmed().isEmpty() ? QFileInfo(path).completeBaseName() : name.trimmed();
-    info.readOnly = true;
+    info.readOnly = readOnly;
     return info;
 }
 }
@@ -121,6 +123,11 @@ void SystemCalendars::call(const QString &service,
     });
 }
 
+void SystemCalendars::leaveOut(const QString &file)
+{
+    m_leftOut = QDir::cleanPath(file);
+}
+
 void SystemCalendars::refresh()
 {
     m_tries = 0;
@@ -137,7 +144,10 @@ void SystemCalendars::look()
         for (const QString &entry : named) {
             const qsizetype split = entry.indexOf(u'=');
             if (split > 0) {
-                calendars.append(calendar(entry.mid(split + 1), entry.left(split)));
+                // "rw:" before the file: one that may be changed.
+                const QString file = entry.mid(split + 1);
+                const bool writable = file.startsWith("rw:"_L1);
+                calendars.append(calendar(writable ? file.mid(3) : file, entry.left(split), !writable));
             }
         }
         // Not from within the call: whoever asks is told later, as by a system.
@@ -197,7 +207,7 @@ void SystemCalendars::look()
                     for (const QString &instance : instances) {
                         for (const Kind &kind : Kinds) {
                             if (instance == kind.name || instance.startsWith(kind.name + u'_')) {
-                                agents.append({instance, kind.settings});
+                                agents.append({instance, kind.settings, kind.file});
                             }
                         }
                     }
@@ -231,22 +241,56 @@ void SystemCalendars::ask(quint64 round, QList<Agent> agents, const QList<Calend
                 return;
             }
             const QString path = reply.arguments().value(0).toString();
-            if (!QDir::isAbsolutePath(path)) {
-                // Not set up yet: Akonadi shows nothing for it either.
+            if (!QDir::isAbsolutePath(path) || QDir::cleanPath(path) == m_leftOut) {
+                // Not set up yet, so that Akonadi shows nothing for it
+                // either; or Kalendar's own events, on their way out.
                 ask(round, agents, calendars, complete);
                 return;
             }
+            const auto named = [=, this](bool readOnly) {
+                call(
+                    control(),
+                    ManagerPath,
+                    ManagerInterface,
+                    u"agentInstanceName"_s,
+                    {agent.instance},
+                    [=, this](const QDBusMessage &reply) {
+                        const QString name = failed(reply) ? QString() : reply.arguments().value(0).toString();
+                        ask(round, agents, calendars + QList<CalendarInfo>{calendar(path, name, readOnly)}, complete);
+                    },
+                    Timeout);
+            };
+            if (!agent.file) {
+                named(true);
+                return;
+            }
+            // A calendar may be changed if its agent lets the file be
+            // changed, and looks at the file again when it was: one that
+            // does not would write what it remembers over the change.
+            const QString service = resource(agent.instance);
             call(
-                control(),
-                ManagerPath,
-                ManagerInterface,
-                u"agentInstanceName"_s,
-                {agent.instance},
+                service,
+                SettingsPath,
+                agent.interface,
+                u"readOnly"_s,
+                {},
                 [=, this](const QDBusMessage &reply) {
-                    const QString name = failed(reply) ? QString() : reply.arguments().value(0).toString();
-                    ask(round, agents, calendars + QList<CalendarInfo>{calendar(path, name)}, complete);
+                    if (failed(reply) || reply.arguments().value(0).toBool()) {
+                        named(true);
+                        return;
+                    }
+                    call(
+                        service,
+                        SettingsPath,
+                        agent.interface,
+                        u"monitorFile"_s,
+                        {},
+                        [=](const QDBusMessage &reply) {
+                            named(failed(reply) || !reply.arguments().value(0).toBool());
+                        },
+                        AgentTimeout);
                 },
-                Timeout);
+                AgentTimeout);
         },
         AgentTimeout);
 }

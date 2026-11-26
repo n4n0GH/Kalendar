@@ -31,19 +31,21 @@ finish-args:
   - --talk-name=com.google.code.AccountsSSO.SingleSignOn
   # The calendars of the system. Akonadi is asked, on the session bus, which
   # calendar files it shows: its control knows the agents, and each agent for
-  # a calendar file knows where its file is. It is asked, never told.
+  # a calendar file knows where its file is. The same way, Akonadi is told
+  # to show Kalendar's own events, which are kept as a calendar file in the
+  # data folder: an agent is made for that file and told where it is.
   - --talk-name=org.freedesktop.Akonadi.Control
   - --talk-name=org.freedesktop.Akonadi.Resource.*
-  # Those files are then read, wherever in the home folder they are; other
+  - --talk-name=org.freedesktop.Akonadi.Agent.*
+  # Those files are then read, and those of calendars that Akonadi lets be
+  # changed are written to, wherever in the home folder they are. Other
   # Flatpaks keep theirs in their data folders, which the home folder alone
-  # leaves out. Nothing of either is written.
-  - --filesystem=home:ro
+  # leaves out; those are only read.
+  - --filesystem=home
   - --filesystem=~/.var/app:ro
-  # Installing the plugin for the calendar of Plasma's clock, from the
-  # settings: a copy of the plugin, and the line that tells Plasma at login
-  # where to look for it.
-  - --filesystem=~/.local/lib/kalendar:create
-  - --filesystem=xdg-config/plasma-workspace/env:create
+  # (The home folder also covers clearing away the plugin for the calendar of
+  # Plasma's clock that earlier versions installed, below ~/.local/lib and
+  # in the folder of scripts that Plasma runs at login.)
 
 cleanup:
   - /include

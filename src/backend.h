@@ -33,6 +33,8 @@ public:
         AccountKindRole,
         /// Whether this is the first calendar of its account in the list.
         FirstOfAccountRole,
+        /// Whether its events can only be looked at.
+        ReadOnlyRole,
     };
 
     explicit CalendarListModel(Engine *engine, QObject *parent = nullptr);

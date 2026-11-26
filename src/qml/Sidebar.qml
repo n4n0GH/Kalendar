@@ -7,7 +7,8 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
 // A small month to jump to a day, and the calendars with a tick each to
-// show or hide their events, in groups by account that can be folded away.
+// show or hide their events, and a lock on those that cannot be changed, in
+// groups by account that can be folded away.
 // Accounts are added in the settings.
 Kirigami.GlobalDrawer {
     id: drawer
@@ -100,6 +101,7 @@ Kirigami.GlobalDrawer {
                     required property string accountId
                     required property string accountKind
                     required property bool firstOfAccount
+                    required property bool readOnly
                     readonly property bool isFolded: drawer.folded.includes(accountId)
 
                     Layout.fillWidth: true
@@ -191,7 +193,20 @@ Kirigami.GlobalDrawer {
                                 elide: Text.ElideRight
                                 Accessible.ignored: true
                             }
+                            // A calendar whose events can only be looked at.
+                            Kirigami.Icon {
+                                implicitWidth: Kirigami.Units.iconSizes.small
+                                implicitHeight: Kirigami.Units.iconSizes.small
+                                visible: row.readOnly
+                                source: "object-locked-symbolic"
+                                opacity: 0.75
+                            }
                         }
+
+                        Accessible.description: row.readOnly ? i18nc("@info:whatsthis said of a calendar", "Read-only") : ""
+                        QQC2.ToolTip.text: i18nc("@info:tooltip said of a calendar", "Read-only: its events cannot be changed here")
+                        QQC2.ToolTip.visible: row.readOnly && hovered
+                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
                     }
                 }
             }

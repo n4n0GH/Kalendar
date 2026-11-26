@@ -76,12 +76,20 @@ void replaceFile(const QString &path, const QByteArray &content)
     QVERIFY(file.commit());
 }
 
-CalendarInfo systemCalendar(const QString &path, const QString &name)
+/// A calendar as the system names it; one that it lets be changed with @p readOnly false.
+CalendarInfo systemCalendar(const QString &path, const QString &name, bool readOnly = true)
 {
     CalendarInfo info;
     info.url = QUrl::fromLocalFile(path);
     info.name = name;
+    info.readOnly = readOnly;
     return info;
+}
+
+QByteArray contentsOf(const QString &path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
 }
 }
 
@@ -579,6 +587,280 @@ private Q_SLOTS:
         QTRY_COMPARE(engine.occurrences(first, last).size(), 3);
         QVERIFY(QFile::remove(folder + u"/one"_s));
         QTRY_COMPARE(engine.occurrences(first, last).size(), 2);
+    }
+    void keepsACalendarFileForOtherPrograms()
+    {
+        const QString file = m_dir.filePath(u"out/kalendar.ics"_s);
+        QFile::remove(file);
+        const auto read = [&] {
+            QFile opened(file);
+            return opened.open(QIODevice::ReadOnly) ? opened.readAll() : QByteArray();
+        };
+        Engine engine;
+        engine.setUndoPeriod(0);
+        QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+        const QString calendar = engine.collections().first().id;
+        // An event that repeats in another time zone with one exception, and one of whole days.
+        QCOMPARE(engine.importEvents(calendar, ImportSample), QString());
+        const QDateTime start(QDate(2026, 11, 12), QTime(14, 0));
+        QCOMPARE(engine.saveEvent(eventData(engine, u"Dentist"_s, start, start.addSecs(3600))), QString());
+        // A calendar of the system is another program's already, and stays out.
+        const QString other = m_dir.filePath(u"other.ics"_s);
+        replaceFile(other, systemSample(2));
+        engine.setSystemCalendars({systemCalendar(other, u"Lists"_s)});
+        const int shown = engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size();
+
+        // No file until one is wanted.
+        QVERIFY(!QFile::exists(file));
+        QVERIFY(engine.setExportFile(file));
+        const QByteArray first = read();
+        QCOMPARE(first, engine.exportedCalendar());
+        QVERIFY(first.startsWith("BEGIN:VCALENDAR\r\n"));
+        QVERIFY(first.endsWith("END:VCALENDAR\r\n"));
+        QVERIFY(first.contains("SUMMARY:Dentist"));
+        QVERIFY(!first.contains("Send the tax form"));
+        QVERIFY(!first.contains("SUMMARY:Review"));
+        QVERIFY(!first.contains("VTODO"));
+        // The events as they are written, the exception and the time zone
+        // among them, and the time zone once.
+        QCOMPARE(first.count("BEGIN:VEVENT"), 4);
+        QCOMPARE(first.count("RECURRENCE-ID"), 1);
+        QCOMPARE(first.count("BEGIN:VTIMEZONE"), first.count("END:VTIMEZONE"));
+        QCOMPARE(first.count("TZID:America/New_York"), 1);
+        // It reads as the calendar it is: the same events on the same days.
+        const CalendarFile inspected = Engine::inspect(first);
+        QVERIFY(inspected.valid);
+        QCOMPARE(inspected.events.size(), 3);
+        QCOMPARE(inspected.others, 0);
+        {
+            Engine reader;
+            QVERIFY(reader.open(m_dir.filePath(u"reader.sqlite"_s)));
+            QCOMPARE(reader.importEvents(reader.collections().first().id, first), QString());
+            QCOMPARE(reader.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), shown - 3);
+        }
+
+        // It follows the calendar by itself, a moment later.
+        QCOMPARE(engine.saveEvent(eventData(engine, u"Cinema"_s, start.addDays(1), start.addDays(1).addSecs(7200))), QString());
+        QCOMPARE(read(), first);
+        QTRY_VERIFY_WITH_TIMEOUT(read().contains("SUMMARY:Cinema"), 5000);
+        const Occurrence dentist = engine.occurrences(QDate(2026, 11, 12), QDate(2026, 11, 12)).first();
+        QVERIFY(engine.deleteEvent(calendar, dentist.href, {}, true) != 0);
+        QTRY_VERIFY_WITH_TIMEOUT(!read().contains("SUMMARY:Dentist"), 5000);
+        QVERIFY(read().contains("SUMMARY:Cinema"));
+
+        // What changes nothing leaves the file as it is, for those who watch it.
+        const QDateTime written = QFileInfo(file).lastModified();
+        QTest::qWait(1100);
+        QVERIFY(engine.setExportFile(file));
+        engine.syncAll();
+        QTest::qWait(1500);
+        QCOMPARE(QFileInfo(file).lastModified(), written);
+
+        // A calendar that is hidden is not handed on.
+        engine.setCollectionEnabled(calendar, false);
+        QTRY_COMPARE_WITH_TIMEOUT(read().count("BEGIN:VEVENT"), 0, 5000);
+        QVERIFY(Engine::inspect(read()).valid);
+        engine.setCollectionEnabled(calendar, true);
+        QTRY_VERIFY_WITH_TIMEOUT(read().contains("SUMMARY:Cinema"), 5000);
+
+        // No longer wanted: the file is left to whoever asked for it, and not written again.
+        QVERIFY(!engine.setExportFile({}));
+        const QByteArray last = read();
+        QCOMPARE(engine.saveEvent(eventData(engine, u"Yoga"_s, start.addDays(2), start.addDays(2).addSecs(3600))), QString());
+        QTest::qWait(1500);
+        QCOMPARE(read(), last);
+    }
+    void changesACalendarFileOfTheSystem()
+    {
+        // A calendar the system lets be changed: next to what Kalendar
+        // shows of it, the file holds things Kalendar knows nothing of.
+        const QString file = m_dir.filePath(u"shared.ics"_s);
+        const QByteArray longUid = QByteArray(90, 'x') + "@elsewhere";
+        QByteArray sample = systemSample(2, "Shared");
+        // A long line, which goes on in the next.
+        const QByteArray longLine = "UID:" + longUid.first(71) + "\r\n " + longUid.sliced(71) + "\r\n";
+        const QByteArray longEvent = "BEGIN:VEVENT\r\n" + longLine
+            + "DTSTAMP:20261120T080000Z\r\n"
+              "SUMMARY:Long\r\n"
+              "DTSTART;VALUE=DATE:20261125\r\n"
+              "X-ELSEWHERE-ONLY:kept\r\n"
+              "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Long\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\n"
+              "END:VEVENT\r\n"
+              "END:VCALENDAR\r\n";
+        sample.replace("END:VCALENDAR\r\n", longEvent);
+        replaceFile(file, sample);
+        const QDate first(2026, 11, 1);
+        const QDate last(2026, 11, 30);
+        const QDateTime start(QDate(2026, 11, 12), QTime(14, 0));
+        QString calendar;
+        {
+            Engine engine;
+            QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+            engine.setSystemCalendars({systemCalendar(file, u"Shared"_s, false)});
+            calendar = engine.collections().last().id;
+            QVERIFY(!engine.collection(calendar)->readOnly);
+            QCOMPARE(engine.occurrences(first, last).size(), 4); // two events and two to-dos
+            const auto save = [&](const QString &summary, int day) {
+                QVariantMap data = eventData(engine, summary, start.addDays(day), start.addDays(day).addSecs(3600));
+                data.insert(u"collectionId"_s, calendar);
+                return engine.saveEvent(data);
+            };
+
+            // A new event goes into the file, and everything else in it stays.
+            QCOMPARE(save(u"Mine"_s, 0), QString());
+            QCOMPARE(engine.pendingChanges(), 0);
+            QCOMPARE(engine.accountError(u"system"_s), QString());
+            QByteArray now = contentsOf(file);
+            QVERIFY(now.contains("SUMMARY:Mine\r\n"));
+            QVERIFY(now.contains("SUMMARY:Review\r\n"));
+            QVERIFY(now.contains("X-WR-CALNAME:Shared\r\n"));
+            QVERIFY(now.contains("X-ELSEWHERE-ONLY:kept\r\n"));
+            QCOMPARE(now.count("BEGIN:VTODO"), 4);
+            QCOMPARE(now.count("BEGIN:VEVENT"), 3);
+            QCOMPARE(now.count("BEGIN:VCALENDAR"), 1);
+            QVERIFY(now.endsWith("END:VCALENDAR\r\n"));
+            QVERIFY(Engine::inspect(now).valid);
+            QCOMPARE(engine.occurrences(first, last).size(), 5);
+
+            // An event of the file is changed: the one in the file is the changed one.
+            QVariantMap review = engine.dayLayout(QDate(2026, 11, 27)).first().toMap();
+            QCOMPARE(review.value(u"readOnly"_s).toBool(), false);
+            review.insert(u"originalCollectionId"_s, calendar);
+            review.insert(u"summary"_s, u"Reviewed"_s);
+            QCOMPARE(engine.saveEvent(review), QString());
+            now = contentsOf(file);
+            QCOMPARE(now.count("UID:review@elsewhere"), 1);
+            QVERIFY(now.contains("SUMMARY:Reviewed\r\n"));
+            QVERIFY(!now.contains("SUMMARY:Review\r\n"));
+            // Also one whose name is written over two lines.
+            QVariantMap longOne = engine.weekLayout(QDate(2026, 11, 25), 1, true, 0).value(u"segments"_s).toList().first().toMap();
+            QCOMPARE(longOne.value(u"title"_s).toString(), u"Long"_s);
+            longOne.insert(u"originalCollectionId"_s, calendar);
+            longOne.insert(u"summary"_s, u"Long, changed"_s);
+            QCOMPARE(engine.saveEvent(longOne), QString());
+            now = contentsOf(file);
+            QVERIFY(!now.contains("SUMMARY:Long\r\n"));
+            QCOMPARE(now.count("SUMMARY:Long"), 1);
+            QCOMPARE(now.count("BEGIN:VEVENT"), 3);
+            QCOMPARE(now.count("BEGIN:VTODO"), 4);
+            QCOMPARE(engine.occurrences(first, last).size(), 5);
+            QCOMPARE(engine.pendingChanges(), 0);
+
+            // A to-do is only shown, in a calendar that can be changed too.
+            QVariantMap tax = engine.weekLayout(QDate(2026, 11, 30), 1, true, 0).value(u"segments"_s).toList().first().toMap();
+            QCOMPARE(tax.value(u"todo"_s).toBool(), true);
+            QCOMPARE(tax.value(u"readOnly"_s).toBool(), true);
+            tax.insert(u"originalCollectionId"_s, calendar);
+            tax.insert(u"summary"_s, u"Changed"_s);
+            QVERIFY(!engine.saveEvent(tax).isEmpty());
+            QCOMPARE(engine.deleteEvent(calendar, tax.value(u"href"_s).toString(), {}, true), 0);
+            QCOMPARE(contentsOf(file), now);
+
+            // Another program wrote to the file a moment ago, which is not
+            // known here yet: both changes are in the file afterwards.
+            QByteArray elsewhere = now;
+            elsewhere.replace("END:VCALENDAR\r\n",
+                              "BEGIN:VEVENT\r\nUID:meanwhile@elsewhere\r\nDTSTAMP:20261120T080000Z\r\nSUMMARY:Meanwhile\r\n"
+                              "DTSTART;VALUE=DATE:20261126\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+            replaceFile(file, elsewhere);
+            QCOMPARE(save(u"Also mine"_s, 1), QString());
+            now = contentsOf(file);
+            QVERIFY(now.contains("SUMMARY:Meanwhile\r\n"));
+            QVERIFY(now.contains("SUMMARY:Also mine\r\n"));
+            QCOMPARE(now.count("BEGIN:VEVENT"), 5);
+            QCOMPARE(engine.occurrences(first, last).size(), 7);
+
+            // Deleted, and taken back: the file never heard of it.
+            engine.setUndoPeriod(400);
+            const Occurrence mine = engine.occurrences(QDate(2026, 11, 12), QDate(2026, 11, 12)).first();
+            int token = engine.deleteEvent(calendar, mine.href, {}, true);
+            QVERIFY(token != 0);
+            QCOMPARE(engine.occurrences(first, last).size(), 6);
+            QVERIFY(contentsOf(file).contains("SUMMARY:Mine\r\n"));
+            engine.undo(token);
+            QTest::qWait(700);
+            QVERIFY(contentsOf(file).contains("SUMMARY:Mine\r\n"));
+            QCOMPARE(engine.occurrences(first, last).size(), 7);
+            QCOMPARE(engine.pendingChanges(), 0);
+            // Deleted for good.
+            token = engine.deleteEvent(calendar, mine.href, {}, true);
+            QVERIFY(token != 0);
+            QTRY_VERIFY(!contentsOf(file).contains("SUMMARY:Mine\r\n"));
+            QCOMPARE(contentsOf(file).count("BEGIN:VEVENT"), 4);
+            QCOMPARE(contentsOf(file).count("BEGIN:VTODO"), 4);
+            QCOMPARE(engine.pendingChanges(), 0);
+            QCOMPARE(engine.occurrences(first, last).size(), 6);
+
+            // The folder cannot be written to right now: the change waits,
+            // it is said why, and it is written when that is over.
+            const QString folder = m_dir.filePath(u"locked"_s);
+            QVERIFY(QDir().mkpath(folder));
+            const QString locked = folder + u"/locked.ics"_s;
+            replaceFile(locked, systemSample(0));
+            engine.setSystemCalendars({systemCalendar(file, u"Shared"_s, false), systemCalendar(locked, u"Locked"_s, false)});
+            const QString lockedCalendar = engine.collections().last().id;
+            QVERIFY(!engine.collection(lockedCalendar)->readOnly);
+            QFile::setPermissions(folder, QFile::ReadOwner | QFile::ExeOwner);
+            if (!QFileInfo(folder).isWritable()) {
+                QVariantMap data = eventData(engine, u"Waiting"_s, start, start.addSecs(3600));
+                data.insert(u"collectionId"_s, lockedCalendar);
+                QCOMPARE(engine.saveEvent(data), QString());
+                QCOMPARE(engine.pendingChanges(), 1);
+                QVERIFY(engine.accountError(u"system"_s).contains("Locked"_L1));
+                QVERIFY(!contentsOf(locked).contains("Waiting"));
+                QCOMPARE(engine.occurrences(QDate(2026, 11, 12), QDate(2026, 11, 12)).size(), 1);
+                // Looked at again meanwhile, it is still there.
+                engine.syncAll();
+                QCOMPARE(engine.pendingChanges(), 1);
+                QCOMPARE(engine.occurrences(QDate(2026, 11, 12), QDate(2026, 11, 12)).size(), 1);
+                QFile::setPermissions(folder, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+                engine.syncAll();
+                QCOMPARE(engine.pendingChanges(), 0);
+                QCOMPARE(engine.accountError(u"system"_s), QString());
+                QVERIFY(contentsOf(locked).contains("SUMMARY:Waiting\r\n"));
+            }
+            QFile::setPermissions(folder, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+
+            // A file that cannot be written makes a calendar that cannot be
+            // changed, whatever the system says; so does a folder of files.
+            QFile::setPermissions(locked, QFile::ReadOwner);
+            const QString entries = m_dir.filePath(u"entries-rw"_s);
+            QVERIFY(QDir().mkpath(entries));
+            // And one whose file is not there yet can be: the file is made.
+            const QString fresh = m_dir.filePath(u"fresh.ics"_s);
+            QFile::remove(fresh);
+            engine.setSystemCalendars({systemCalendar(file, u"Shared"_s, false),
+                                       systemCalendar(locked, u"Locked"_s, false),
+                                       systemCalendar(entries, u"Entries"_s, false),
+                                       systemCalendar(fresh, u"Fresh"_s, false)});
+            QCOMPARE(engine.collections().size(), 5);
+            QVERIFY(!engine.collection(calendar)->readOnly);
+            if (!QFileInfo(locked).isWritable()) {
+                QVERIFY(engine.collection(lockedCalendar)->readOnly);
+            }
+            QVERIFY(engine.collections().at(3).readOnly);
+            const QString freshCalendar = engine.collections().at(4).id;
+            QVERIFY(!engine.collection(freshCalendar)->readOnly);
+            QVariantMap data = eventData(engine, u"First"_s, start, start.addSecs(3600));
+            data.insert(u"collectionId"_s, freshCalendar);
+            QCOMPARE(engine.saveEvent(data), QString());
+            QVERIFY(Engine::inspect(contentsOf(fresh)).valid);
+            QCOMPARE(Engine::inspect(contentsOf(fresh)).events.size(), 1);
+            QCOMPARE(engine.pendingChanges(), 0);
+            // Where not all could be asked about, what could be changed still can.
+            engine.setSystemCalendars({}, false);
+            QVERIFY(!engine.collection(calendar)->readOnly);
+            // The system no longer lets it be changed.
+            engine.setSystemCalendars({systemCalendar(file, u"Shared"_s, true)});
+            QVERIFY(engine.collection(calendar)->readOnly);
+            QVERIFY(!save(u"Too late"_s, 3).isEmpty());
+        }
+        // All of it is there at the next start, as the file has it.
+        Engine engine;
+        QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+        QCOMPARE(engine.pendingChanges(), 0);
+        QCOMPARE(engine.occurrences(first, last).size(), 6);
+        QCOMPARE(Engine::inspect(contentsOf(file)).events.size(), 4);
     }
 };
 

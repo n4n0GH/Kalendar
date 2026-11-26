@@ -8,8 +8,7 @@ SPDX-License-Identifier: CC0-1.0
 ## Building
 
 Needed: Qt 6.6 or newer, KDE Frameworks 6.8 or newer (Kirigami, KCalendarCore,
-KI18n, KCoreAddons, KColorScheme, KWallet, and KDeclarative for the clock
-plugin), and extra-cmake-modules. The package names for openSUSE are in the
+KI18n, KCoreAddons, KColorScheme, KWallet), and extra-cmake-modules. The package names for openSUSE are in the
 [README](../README.md#building).
 
 ```sh
@@ -18,9 +17,8 @@ cmake --build build
 build/bin/kalendar
 ```
 
-Without KDeclarative's development files the clock plugin is left out and
-everything else builds. Development files that cannot be installed with the
-system can be unpacked anywhere and named with `-DCMAKE_PREFIX_PATH=…`.
+Development files that cannot be installed with the system can be unpacked
+anywhere and named with `-DCMAKE_PREFIX_PATH=…`.
 
 A build run from its folder uses the same data as an installed one
 (`~/.local/share/kalendar`), and not the Flatpak's.
@@ -50,14 +48,13 @@ ctest --test-dir build --output-on-failure
 | --- | --- | --- |
 | `appstreamtest` | The metainfo file is valid | |
 | `davparsertest` | Reading CalDAV answers | |
-| `enginetest` | The calendar on this system: events, repetition, layouts, undo; the calendar files of the system | |
+| `enginetest` | The calendar on this system: events, repetition, layouts, undo; the calendar files of the system; the calendar file for other programs | |
 | `synctest` | Two Kalendars sharing an account on a real CalDAV server | Radicale |
 | `googletest` | Google's events to calendar files and back; a full round with the stand-in for Google | `python3` |
 | `onlineaccountstest` | Reading the system's account list | |
 | `systemcalendarstest` | Asking Akonadi for its calendar files, with a stand-in for Akonadi | a session bus |
-| `clockplugintest` | Installing, refreshing and removing the clock plugin, in a temporary folder | |
+| `systemexporttest` | Handing Kalendar's events to Akonadi, with a stand-in for Akonadi; clearing away the old clock plugin | a session bus |
 | `backendtest` | Adding and removing accounts, times of day, notes | Radicale, `python3` |
-| `plasmaplugintest` | The plugin, loaded as Plasma would | KDeclarative |
 
 Tests that need something that is missing skip themselves.
 
@@ -93,8 +90,10 @@ written to pass in any, and worth running with `TZ=America/New_York` and
 - **Without touching real data.** `KALENDAR_TEST_MODE=1` keeps data and
   settings under `~/.qttest`, keeps passwords in memory, takes Online
   Accounts from `KALENDAR_ONLINE_ACCOUNTS` and the calendars of the system
-  from `KALENDAR_SYSTEM_CALENDARS` (`"To-Dos=/path/to-dos.ics"`) instead of
-  Akonadi, and installs the clock plugin under `~/.qttest`. `KALENDAR_DEMO=1` adds a few events around today.
+  from `KALENDAR_SYSTEM_CALENDARS` (`"To-Dos=/path/to-dos.ics"`; `rw:` before the path for one that may be changed) instead of
+  Akonadi, and hands its events to no Akonadi (unless `AKONADI_INSTANCE`
+  names one to try with: see [The calendars of the
+  system](system-calendars.md#trying-it)). `KALENDAR_DEMO=1` adds a few events around today.
 - **Without a display.** In test mode, `KALENDAR_EVAL` runs JavaScript in the
   scope of `Main.qml`, and `KALENDAR_SCREENSHOT` saves a picture and quits:
 
@@ -130,8 +129,7 @@ style, also in other apps, and have no visible effect.
   GPL-3.0-or-later, build files BSD-2-Clause, documentation, the manifest
   and icons CC0-1.0; the texts are in `LICENSES/`.
 - **The core stays free of the app.** `src/core` has no GUI, no wallet and no
-  settings, which is what lets it be tested alone and linked into the clock
-  plugin.
+  settings, which is what lets it be tested alone.
 - **Test hooks stay out of users' way.** What exists for tests is switched by
   environment variables that start with `KALENDAR_`; those that drive the
   interface or stand in for the system's accounts only work in test mode.
@@ -166,8 +164,9 @@ no.
 
 **… change the database.** There are no migrations yet: the tables are
 created `IF NOT EXISTS`. A new column needs an `ALTER TABLE` for files that
-exist, in `Database::open()`, and must not break `openReadOnly()`, with which
-an older clock plugin may read a newer file.
+exist, in `Database::open()`. A clock plugin that an earlier version
+installed with the system may still read the file; it selects the columns it
+knows by name.
 
 **… make new pictures for the README.** See "Without a display" above; the
 window is 1080 by 684.

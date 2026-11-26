@@ -48,17 +48,6 @@ find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
     Wallet
 )
 
-# For showing the events in the calendar of Plasma's clock. The plugin belongs
-# to the system's Plasma, so it is of no use inside a Flatpak.
-option(BUILD_PLASMA_PLUGIN "Build the plugin for the calendar of Plasma's clock" ON)
-if(BUILD_PLASMA_PLUGIN)
-    find_package(KF6Declarative ${KF_MIN_VERSION})
-endif()
-set_package_properties(KF6Declarative PROPERTIES
-    TYPE OPTIONAL
-    PURPOSE "Shows Kalendar's events in the calendar of Plasma's clock"
-)
-
 # QML modules that are only needed at run time.
 ecm_find_qmlmodule(org.kde.kirigami REQUIRED)
 ecm_find_qmlmodule(org.kde.coreaddons REQUIRED)

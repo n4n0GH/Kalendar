@@ -8,11 +8,12 @@ import org.kde.kirigami as Kirigami
 import org.kde.kirigami.delegates as KD
 
 // What can be set up: the accounts calendars come from, how the calendar
-// looks, and the plugin for the clock.
+// looks, and whether other calendar programs get to show the events.
 Kirigami.ScrollablePage {
     id: page
 
-    property string errorText
+    // Why Kalendar's events could not be handed to the system, if so.
+    readonly property string errorText: SystemExport.problem
 
     // What is chosen here, which only counts once "Apply" is clicked.
     property bool use24Hour: Backend.use24Hour
@@ -30,6 +31,8 @@ Kirigami.ScrollablePage {
     }
 
     title: i18nc("@title", "Settings")
+    // The calendar may have been removed in another program meanwhile.
+    Component.onCompleted: SystemExport.refresh()
 
     // Only for what went wrong; what went well is said in passing.
     header: Kirigami.InlineMessage {
@@ -40,7 +43,7 @@ Kirigami.ScrollablePage {
     }
 
     // As in System Settings: choices are tried out above and only kept by
-    // "Apply". Accounts and the plugin are things done, and done at once.
+    // "Apply". Accounts and what the system is handed are things done, and done at once.
     footer: ColumnLayout {
         spacing: 0
 
@@ -210,37 +213,36 @@ Kirigami.ScrollablePage {
 
         Kirigami.Separator {
             Kirigami.FormData.isSection: true
-            Kirigami.FormData.label: i18nc("@title:group", "Clock in the Panel")
+            Kirigami.FormData.label: i18nc("@title:group", "Other Calendar Programs")
         }
 
         QQC2.Label {
-            Kirigami.FormData.label: i18nc("@label what shows events in the calendar of the clock", "Events in its calendar:")
-            visible: ClockPlugin.systemWide || !ClockPlugin.available
-            text: ClockPlugin.systemWide ? i18nc("@info", "The plugin is installed with the system.")
-                : i18nc("@info", "This Kalendar comes without the plugin.")
+            Kirigami.FormData.label: i18nc("@label what is handed to the other calendar programs of the system", "Events of Kalendar:")
+            visible: !SystemExport.available
+            text: i18nc("@info Akonadi is the name of the service that keeps the calendars of KDE’s other programs",
+                "There is no Akonadi on this system to hand them to.")
         }
         QQC2.Button {
-            Kirigami.FormData.label: i18nc("@label what shows events in the calendar of the clock", "Events in its calendar:")
-            visible: ClockPlugin.available && !ClockPlugin.systemWide
-            text: ClockPlugin.installed ? i18nc("@action:button", "Remove Plugin") : i18nc("@action:button", "Install Plugin")
-            icon.name: ClockPlugin.installed ? "edit-delete-remove" : "install"
+            Kirigami.FormData.label: i18nc("@label what is handed to the other calendar programs of the system", "Events of Kalendar:")
+            visible: SystemExport.available
+            enabled: !SystemExport.busy
+            text: SystemExport.shown ? i18nc("@action:button", "Remove from the System’s Calendars")
+                : i18nc("@action:button", "Add to the System’s Calendars")
+            icon.name: SystemExport.shown ? "edit-delete-remove" : "list-add"
             onClicked: {
-                const installing = !ClockPlugin.installed
-                page.errorText = installing ? ClockPlugin.install() : ClockPlugin.remove()
-                if (page.errorText.length === 0) {
-                    // Goes away by itself; what to do next stays written below.
-                    applicationWindow().showPassiveNotification(installing
-                        ? i18nc("@info", "Plugin installed. Log out and in again to use it.")
-                        : i18nc("@info", "Plugin removed"), "long")
+                if (SystemExport.shown) {
+                    SystemExport.remove()
+                } else {
+                    SystemExport.add()
                 }
             }
         }
         QQC2.Label {
             Layout.fillWidth: true
             Layout.maximumWidth: Kirigami.Units.gridUnit * 20
-            text: ClockPlugin.installed
-                ? i18nc("@info", "The plugin is installed. Once you have logged out and in again, it is switched on in the clock’s settings, under “Calendar”. Removing it takes effect at the next login.")
-                : i18nc("@info", "Shows Kalendar’s events in the calendar that opens from the clock. It is installed for you only, and nothing else of the system is changed.")
+            text: SystemExport.shown
+                ? i18nc("@info", "The events of the calendars that are shown here are among the system’s calendars, as a calendar named “Kalendar” that can only be looked at. KOrganizer and Merkuro show it, and so does the calendar that opens from the clock in the panel, once “PIM Events Plugin” is switched on in the clock’s settings, under “Calendar”.")
+                : i18nc("@info", "Hands the events of the calendars that are shown here to Akonadi, from which KOrganizer, Merkuro and the calendar that opens from the clock in the panel take what they show. There they can be looked at; they are changed here.")
             wrapMode: Text.WordWrap
             opacity: 0.75
         }

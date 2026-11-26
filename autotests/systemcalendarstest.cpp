@@ -44,11 +44,23 @@ class FakeFileAgent : public QObject
 
 public:
     QString file;
+    /// Whether Akonadi lets the calendar be changed, and looks at the file
+    /// again when another program wrote to it.
+    bool locked = false;
+    bool watches = true;
 
 public Q_SLOTS:
     QString path()
     {
         return file;
+    }
+    bool readOnly()
+    {
+        return locked;
+    }
+    bool monitorFile()
+    {
+        return watches;
     }
 };
 
@@ -65,6 +77,10 @@ public Q_SLOTS:
     QString path()
     {
         return folder;
+    }
+    bool readOnly()
+    {
+        return false;
     }
 };
 
@@ -131,6 +147,7 @@ private Q_SLOTS:
         serveAgent(u"akonadi_icaldir_resource_0"_s, &m_entries);
         // Without a name of its own, and with a path that could be shorter.
         m_todos.file = u"/home/ada/lists/../.var/app/org.example.Lists/data/to-dos.ics"_s;
+        m_todos.locked = true;
         serveAgent(u"akonadi_ical_resource_12"_s, &m_todos);
         const QDBusConnection control = serve(u"org.freedesktop.Akonadi.Control"_s, u"/AgentManager"_s, &m_manager);
         QVERIFY(control.isConnected());
@@ -142,20 +159,29 @@ private Q_SLOTS:
         QCOMPARE(calendars.size(), 3);
         QCOMPARE(calendars.at(0).url, QUrl::fromLocalFile(u"/home/ada/.local/share/apps/korganizer/std.ics"_s));
         QCOMPARE(calendars.at(0).name, u"Personal Calendar"_s);
-        QVERIFY(calendars.at(0).readOnly);
+        // One that Akonadi lets be changed may be changed; a folder of
+        // files is only read, and so is one that Akonadi keeps to itself.
+        QVERIFY(!calendars.at(0).readOnly);
         QCOMPARE(calendars.at(1).url, QUrl::fromLocalFile(u"/home/ada/entries"_s));
         QCOMPARE(calendars.at(1).name, u"Entries"_s);
+        QVERIFY(calendars.at(1).readOnly);
+        QVERIFY(calendars.at(2).readOnly);
         QCOMPARE(calendars.at(2).url, QUrl::fromLocalFile(u"/home/ada/.var/app/org.example.Lists/data/to-dos.ics"_s));
         QCOMPARE(calendars.at(2).name, u"to-dos"_s);
 
         // An agent is set up and named, which Akonadi tells.
+        // It does not look at its file again when that is written to, so
+        // what is written there would be lost: it is only read.
         m_unset.file = u"/home/ada/work.ics"_s;
+        m_unset.watches = false;
         m_manager.names.insert(u"akonadi_ical_resource_1"_s, u"Work"_s);
         Q_EMIT m_manager.agentInstanceNameChanged(u"akonadi_ical_resource_1"_s, u"Work"_s);
         QTRY_COMPARE_WITH_TIMEOUT(found.size(), 2, 10000);
         calendars = found.last().at(0).value<QList<CalendarInfo>>();
         QCOMPARE(calendars.size(), 4);
         QCOMPARE(calendars.at(1).name, u"Work"_s);
+        QVERIFY(calendars.at(1).readOnly);
+        QVERIFY(!calendars.at(0).readOnly);
         QCOMPARE(found.last().at(1).toBool(), true);
 
         // One is removed, and one does not answer: that one may still be
@@ -178,7 +204,7 @@ private Q_SLOTS:
 
     void takesThemFromTheEnvironmentInTestMode()
     {
-        qputenv("KALENDAR_SYSTEM_CALENDARS", "To-Dos=/tmp/lists/to-dos.ics,Other=/tmp/other.ics");
+        qputenv("KALENDAR_SYSTEM_CALENDARS", "To-Dos=/tmp/lists/to-dos.ics,Other=rw:/tmp/other.ics");
         SystemCalendars system(true);
         QSignalSpy found(&system, &SystemCalendars::found);
         system.refresh();
@@ -188,6 +214,9 @@ private Q_SLOTS:
         QCOMPARE(calendars.at(0).name, u"To-Dos"_s);
         QCOMPARE(calendars.at(0).url, QUrl::fromLocalFile(u"/tmp/lists/to-dos.ics"_s));
         QCOMPARE(calendars.at(1).name, u"Other"_s);
+        QCOMPARE(calendars.at(1).url, QUrl::fromLocalFile(u"/tmp/other.ics"_s));
+        QVERIFY(calendars.at(0).readOnly);
+        QVERIFY(!calendars.at(1).readOnly);
     }
 };
 

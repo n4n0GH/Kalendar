@@ -21,7 +21,8 @@ class QTimer;
 /// runs, and an agent for a calendar file (akonadi_ical_resource), or for a
 /// folder with a file for each entry (akonadi_icaldir_resource), says where
 /// its file is. Those files are what is found here, each with the name
-/// Akonadi shows it under; the engine reads them. Calendars that Akonadi
+/// Akonadi shows it under and whether Akonadi lets it be changed; the engine
+/// reads them, and writes to those. Calendars that Akonadi
 /// fetches from servers, or makes up from the address book, are not found.
 ///
 /// Akonadi is never started to be asked. While it does not run, nothing is
@@ -34,15 +35,21 @@ class SystemCalendars : public QObject
 
 public:
     /// With @p testMode there is no system to ask: the calendars are those
-    /// named in KALENDAR_SYSTEM_CALENDARS ("To-Dos=/path/to-dos.ics,…").
+    /// named in KALENDAR_SYSTEM_CALENDARS ("To-Dos=/path/to-dos.ics,…"; with
+    /// "rw:" before the file, one that may be changed).
     explicit SystemCalendars(bool testMode, QObject *parent = nullptr);
 
+    /// A calendar file that is never found: the one in which Kalendar hands
+    /// its own events to the system, which would come back as a calendar of
+    /// the system otherwise.
+    void leaveOut(const QString &file);
     /// Asks anew. The answer arrives as found(), unless Akonadi does not run.
     void refresh();
 
 Q_SIGNALS:
-    /// The calendar files there are. With @p complete false, an agent did
-    /// not say where its file is, so there may be more than these.
+    /// The calendar files there are, each with whether Akonadi lets it be
+    /// changed. With @p complete false, an agent did not say where its file
+    /// is, so there may be more than these.
     void found(const QList<CalendarInfo> &calendars, bool complete);
 
 private Q_SLOTS:
@@ -54,6 +61,8 @@ private:
         QString instance;
         /// What its settings are called on the bus.
         QString interface;
+        /// Whether it has one file, which could be written to.
+        bool file = false;
     };
     using Reply = std::function<void(const QDBusMessage &)>;
 
@@ -65,6 +74,7 @@ private:
     void finish(const QList<CalendarInfo> &calendars, bool complete);
 
     const bool m_testMode;
+    QString m_leftOut;
     /// Goes up with every question: answers to an earlier one do not count.
     quint64 m_round = 0;
     /// An agent that is new has to be set up before it can be asked.

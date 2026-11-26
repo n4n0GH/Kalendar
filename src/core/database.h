@@ -17,8 +17,7 @@ public:
     Database(const Database &) = delete;
     Database &operator=(const Database &) = delete;
 
-    /// With @p readOnly, the file must exist and nothing in it is touched.
-    bool open(const QString &path, bool readOnly = false);
+    bool open(const QString &path);
     QString errorString() const;
 
     QList<Account> accounts() const;

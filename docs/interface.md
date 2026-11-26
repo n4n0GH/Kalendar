@@ -42,7 +42,7 @@ created once in `Main.qml` and opened through functions of the window:
 | File | What it is |
 | --- | --- |
 | `Main.qml` | The window: state, dialogs, the functions pages call |
-| `Sidebar.qml` | The global drawer: small month, calendars in groups by account (the system's among them) that fold away, the bar that shows fetching |
+| `Sidebar.qml` | The global drawer: small month, calendars in groups by account (the system's among them) that fold away, a lock on those that cannot be changed, the bar that shows fetching |
 | `MiniMonth.qml` | The small month, with a dot on days that have events (`Backend.busyDays()`), and week numbers if wanted |
 | `CalendarPage.qml` | The one page: toolbar, and the view for the mode |
 | `MonthView.qml` | Six weeks, each laid out by `Backend.weekLayout()` |
@@ -56,7 +56,7 @@ created once in `Main.qml` and opened through functions of the window:
 | `CalendarBox.qml` | Choosing the calendar events go to |
 | `ImportDialog.qml` | What calendar files hold, and where their events are to go |
 | `AddAccountDialog.qml` | Adding an account |
-| `SettingsPage.qml` | Accounts, how the calendar looks, the clock plugin |
+| `SettingsPage.qml` | Accounts, how the calendar looks, handing the events to other calendar programs |
 
 ## Importing calendar files
 
@@ -161,8 +161,8 @@ region until the user chooses.
 
 `SettingsPage` works like System Settings: its controls change properties of
 the page only, *Apply* writes them, *Cancel* and the back arrow forget them.
-Adding and removing accounts and installing the plugin are things done, not
-settings, and happen at once.
+Adding and removing accounts and handing the events to the system are things
+done, not settings, and happen at once.
 
 Times of day are written by `Backend::formatTime()` everywhere, which takes
 the format of the user's language and makes it count to 24 or twice to 12.

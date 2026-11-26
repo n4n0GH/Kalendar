@@ -77,10 +77,6 @@ public:
     /// Loads everything from the database at @p path. On first use, this
     /// creates a calendar that lives on this system only.
     bool open(const QString &path);
-    /// Loads everything from the database at @p path to look at only:
-    /// nothing is written, sent or fetched. For other programs that show
-    /// Kalendar's events while Kalendar itself may be running.
-    bool openReadOnly(const QString &path);
     QString errorString() const;
     void setAuthProvider(const AuthProvider &provider);
 
@@ -104,15 +100,27 @@ public:
     void setCollectionEnabled(const QString &id, bool enabled);
 
     /// The calendar files the system shows (see Account::System), each with
-    /// its name and, as its address, the file or the folder of files. They
-    /// become calendars that can only be read, are read at once, and are
-    /// read again whenever the files change. With none, the account goes.
+    /// its name, its address (the file, or the folder of files) and whether
+    /// the system lets it be changed. They become calendars, are read at
+    /// once, and are read again whenever the files change. One that may be
+    /// changed and whose file can be written is changed like any other
+    /// calendar, by writing the events into the file; a folder of files is
+    /// only read. With none, the account goes.
     /// With @p complete false, not all could be asked about: calendars that
     /// are not named are then kept rather than taken to be gone.
     void setSystemCalendars(const QList<CalendarInfo> &calendars, bool complete = true);
     /// Reads the system's calendar files again, those that are not as they
     /// were read last.
     void readSystemCalendars();
+
+    /// Keeps the events of the calendars that are shown as one calendar file
+    /// at @p path, for other programs to read, written anew whenever they
+    /// change; with an empty path, no such file is kept (one that is there
+    /// is left alone). The calendars of the system are not in it: other
+    /// programs have those already. Gives whether the file is there.
+    bool setExportFile(const QString &path);
+    /// What that file is to hold right now.
+    QByteArray exportedCalendar() const;
 
     void syncAll();
     void syncAccount(const QString &id);
@@ -209,7 +217,11 @@ private:
     Collection *findCollection(const QString &id);
     /// Gives whether events changed; @p error is set if the files could not be read.
     bool readSystemCalendar(const QString &collectionId, QString *error);
+    /// Puts the events of @p pending, changed or deleted here, into the
+    /// calendar's file. Gives whether that worked.
+    bool writeSystemCalendar(const QString &collectionId, const QStringList &pending);
     void watchSystemCalendars();
+    bool writeExport();
     CalendarClient *clientFor(const Account &account, const QByteArray &authorization);
     void setAccountError(const QString &accountId, const QString &error);
 
@@ -246,7 +258,9 @@ private:
     Undo m_undo;
     int m_lastToken = 0;
     int m_undoPeriod = 10000;
-    bool m_readOnly = false;
+    QString m_exportFile;
+    /// Events change in bursts, which are waited out and written as one.
+    QTimer *m_exportTimer = nullptr;
     /// Tells when a calendar file of the system changes; none until there is one.
     QFileSystemWatcher *m_watcher = nullptr;
     /// Files are written in steps, which are waited out and read as one.

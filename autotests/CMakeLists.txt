@@ -45,14 +45,17 @@ ecm_add_test(systemcalendarstest.cpp
 )
 target_include_directories(systemcalendarstest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-# Installing the plugin for Plasma's clock for one user.
-ecm_add_test(clockplugintest.cpp
-        ${CMAKE_SOURCE_DIR}/src/clockplugin.cpp
-    TEST_NAME clockplugintest
-    LINK_LIBRARIES Qt6::Test Qt6::Qml KF6::I18n
+# Handing Kalendar's events to Akonadi as a calendar file, with the same
+# kind of stand-in; and clearing away the plugin for Plasma's clock that
+# earlier versions installed.
+ecm_add_test(systemexporttest.cpp
+        ${CMAKE_SOURCE_DIR}/src/systemcalendars.cpp
+        ${CMAKE_SOURCE_DIR}/src/systemexport.cpp
+    TEST_NAME systemexporttest
+    LINK_LIBRARIES kalendarcore Qt6::Test Qt6::DBus Qt6::Qml KF6::I18n
 )
-target_compile_definitions(clockplugintest PRIVATE TRANSLATION_DOMAIN="kalendar" KALENDAR_PLUGIN_DIR="")
-target_include_directories(clockplugintest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(systemexporttest PRIVATE TRANSLATION_DOMAIN="kalendar")
+target_include_directories(systemexporttest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # The colors of the desktop in a Flatpak: the scheme file made of the portal's.
 ecm_add_test(desktopcolorstest.cpp
@@ -73,12 +76,3 @@ ecm_add_test(backendtest.cpp
 )
 target_compile_definitions(backendtest PRIVATE TRANSLATION_DOMAIN="kalendar")
 target_include_directories(backendtest PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/src)
-
-if(TARGET kalendarevents)
-    ecm_add_test(plasmaplugintest.cpp
-        TEST_NAME plasmaplugintest
-        LINK_LIBRARIES kalendarcore KF6::CalendarEvents Qt6::Test
-    )
-    target_compile_definitions(plasmaplugintest PRIVATE PLUGIN_FILE="$<TARGET_FILE:kalendarevents>")
-    add_dependencies(plasmaplugintest kalendarevents)
-endif()
