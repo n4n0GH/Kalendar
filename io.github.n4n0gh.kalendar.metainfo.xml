@@ -36,6 +36,18 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.7.0" date="2026-11-26">
+      <description>
+        <p>Kalendar and the other calendar programs of the system share more:</p>
+        <ul>
+          <li>Kalendar's events can be handed to the system's calendars, from the settings: KOrganizer, Merkuro and the calendar that opens from the clock in the panel then show them, as a calendar named “Kalendar”. For the clock, switch on “PIM Events Plugin” in its settings, under “Calendar”</li>
+          <li>This takes the place of the plugin for the clock that Kalendar used to install. The plugin is removed at the next start; to see events in the clock again, hand them over as described above</li>
+          <li>Events can be added, changed and deleted in the system's calendars that Akonadi lets be changed, such as the calendar of KOrganizer. To-dos are still only shown</li>
+          <li>Calendars that can only be looked at carry a lock in the sidebar</li>
+        </ul>
+        <p>Installed as a Flatpak, Kalendar may now write to the home folder, where those calendars are kept. Akonadi keeps a copy of a calendar as it was for every change another program makes to it.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-11-26">
       <description>
         <p>Kalendar shows the calendars that other programs keep on this computer:</p>
