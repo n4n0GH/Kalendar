@@ -5,7 +5,11 @@
 
 #include <QCoreApplication>
 #include <QDBusConnection>
+#include <QDir>
+#include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace Qt::StringLiterals;
@@ -98,6 +102,25 @@ class SystemCalendarsTest : public QObject
     FakeFileAgent m_unset;
     FakeFolderAgent m_entries;
     int m_connections = 0;
+    QTemporaryDir m_dir;
+
+    /// A file that was last written @p days days ago.
+    static void makeFile(const QString &path, int days)
+    {
+        QVERIFY(QDir().mkpath(QFileInfo(path).path()));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
+        // Written first: writing is what sets the time.
+        file.close();
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.setFileTime(QDateTime::currentDateTime().addDays(-days), QFileDevice::FileModificationTime));
+    }
+
+    static QStringList filesIn(const QString &folder)
+    {
+        return QDir(folder).entryList(QDir::Files, QDir::Name);
+    }
 
     /// Each on a connection of its own, as each is a program of its own.
     QDBusConnection serve(const QString &service, const QString &path, QObject *object)
@@ -117,6 +140,11 @@ class SystemCalendarsTest : public QObject
 private Q_SLOTS:
     void initTestCase()
     {
+        // What is remembered from one start to the next goes to a place for tests.
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(u"kalendar-tests"_s);
+        QCoreApplication::setApplicationName(u"systemcalendarstest"_s);
+        QSettings().remove(u"SystemCalendars"_s);
         if (!QDBusConnection::sessionBus().isConnected()) {
             QSKIP("There is no session bus to put a stand-in for Akonadi on.");
         }
@@ -200,6 +228,86 @@ private Q_SLOTS:
         QTRY_COMPARE_WITH_TIMEOUT(found.size(), 4, 10000);
         QCOMPARE(found.last().at(0).value<QList<CalendarInfo>>().size(), 3);
         QCOMPARE(found.last().at(1).toBool(), true);
+
+        // Akonadi's agents keep a copy of their calendar for every change
+        // another program makes to its file. Those of a file that Kalendar
+        // wrote to are cleared away, the old ones; those of others are not.
+        const QString data = m_dir.filePath(u"agents"_s);
+        const QString personal = data + u"/akonadi_ical_resource_0"_s;
+        const QString todos = data + u"/akonadi_ical_resource_12"_s;
+        for (int number = 1; number <= 8; ++number) {
+            makeFile(personal + u"/std.ics-%1"_s.arg(number), 100 - number);
+            makeFile(todos + u"/to-dos.ics-%1"_s.arg(number), 100 - number);
+        }
+        system.setAgentData(data);
+        system.noteWritten(QUrl::fromLocalFile(u"/home/ada/.local/share/apps/korganizer/std.ics"_s));
+        system.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(found.size(), 5, 10000);
+        QCOMPARE(filesIn(personal), (QStringList{u"std.ics-4"_s, u"std.ics-5"_s, u"std.ics-6"_s, u"std.ics-7"_s, u"std.ics-8"_s}));
+        QCOMPARE(filesIn(todos).size(), 8);
+        QCOMPARE(QSettings().value(u"SystemCalendars/written"_s).toStringList().size(), 1);
+
+        // Kalendar is started again: it still knows which file it wrote to.
+        makeFile(personal + u"/std.ics-1"_s, 40);
+        makeFile(personal + u"/std.ics-2"_s, 2);
+        SystemCalendars later(false);
+        later.setAgentData(data);
+        QSignalSpy foundLater(&later, &SystemCalendars::found);
+        later.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(foundLater.size(), 1, 10000);
+        // The newest five stay, the two new ones among them, whatever their
+        // numbers; the two that are left over are old, and go.
+        QCOMPARE(filesIn(personal), (QStringList{u"std.ics-1"_s, u"std.ics-2"_s, u"std.ics-6"_s, u"std.ics-7"_s, u"std.ics-8"_s}));
+
+        // A calendar that Akonadi no longer has is forgotten, and nothing of it is touched.
+        later.noteWritten(QUrl::fromLocalFile(u"/home/ada/gone.ics"_s));
+        QCOMPARE(QSettings().value(u"SystemCalendars/written"_s).toStringList().size(), 2);
+        later.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(foundLater.size(), 2, 10000);
+        QCOMPARE(QSettings().value(u"SystemCalendars/written"_s).toStringList(), QStringList{u"/home/ada/.local/share/apps/korganizer/std.ics"_s});
+    }
+
+    void clearsAwayOnlyOldCopies()
+    {
+        const QString folder = m_dir.filePath(u"copies"_s);
+        // Copies of the calendar, the lower numbers not always the older ones.
+        makeFile(folder + u"/std.ics-1"_s, 3);
+        makeFile(folder + u"/std.ics-2"_s, 400);
+        makeFile(folder + u"/std.ics-3"_s, 90);
+        makeFile(folder + u"/std.ics-4"_s, 45);
+        makeFile(folder + u"/std.ics-5"_s, 31);
+        makeFile(folder + u"/std.ics-6"_s, 29);
+        makeFile(folder + u"/std.ics-10"_s, 10);
+        // What is not a copy of this calendar, however old.
+        const QStringList others{u"std.ics"_s, u"std.ics-"_s, u"std.ics-2.bak"_s, u"std.ics-old"_s, u"other.ics-1"_s, u"xstd.ics-1"_s, u"notes.txt"_s};
+        for (const QString &other : others) {
+            makeFile(folder + u'/' + other, 500);
+        }
+        QVERIFY(QDir().mkpath(folder + u"/std.ics-99"_s)); // a folder of that name
+
+        // Nothing goes while there are few, old as they may be.
+        QCOMPARE(SystemCalendars::prune(folder, u"std.ics"_s, 7, 30), 0);
+        // Nor what is not old, many as there may be.
+        QCOMPARE(SystemCalendars::prune(folder, u"std.ics"_s, 0, 1000), 0);
+        QCOMPARE(filesIn(folder).size(), 7 + others.size());
+
+        // The newest three stay (3, 10 and 29 days), and of the rest, those of more than 30 days go.
+        QCOMPARE(SystemCalendars::prune(folder, u"std.ics"_s, 3, 30), 4);
+        QStringList left = others + QStringList{u"std.ics-1"_s, u"std.ics-10"_s, u"std.ics-6"_s};
+        left.sort();
+        QCOMPARE(filesIn(folder), left);
+        QVERIFY(QFileInfo(folder + u"/std.ics-99"_s).isDir());
+        // As it is used: five and thirty days.
+        makeFile(folder + u"/std.ics-2"_s, 400);
+        QCOMPARE(SystemCalendars::prune(folder, u"std.ics"_s), 0);
+        makeFile(folder + u"/std.ics-3"_s, 31);
+        makeFile(folder + u"/std.ics-4"_s, 500);
+        QCOMPARE(SystemCalendars::prune(folder, u"std.ics"_s), 1);
+        QVERIFY(!QFile::exists(folder + u"/std.ics-4"_s));
+        // No folder, no name: nothing happens.
+        QCOMPARE(SystemCalendars::prune(m_dir.filePath(u"none"_s), u"std.ics"_s), 0);
+        QCOMPARE(SystemCalendars::prune(folder, QString()), 0);
+        QCOMPARE(SystemCalendars::prune(QString(), u"std.ics"_s), 0);
     }
 
     void takesThemFromTheEnvironmentInTestMode()

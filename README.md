@@ -94,8 +94,9 @@ that cannot be changed.
 Kalendar asks Akonadi on the session bus which files it shows, reads those files and writes changed events into them
 (`src/systemcalendars.*`, `src/core/engine.*`); nothing of Akonadi is linked, so it works from the Flatpak too, which
 may read and write the home folder for this. Akonadi keeps a copy of a calendar as it was whenever another program
-changes its file, in `~/.local/share/akonadi_ical_resource_<number>/`: one for every change made in Kalendar. Calendars
-that Akonadi fetches from a server are not shown: add the account to Kalendar instead.
+changes its file, in `~/.local/share/akonadi_ical_resource_<number>/`: one for every change made in Kalendar. Kalendar
+clears those away again for the calendars it wrote to, once they are older than 30 days, and always leaves the newest
+five. Calendars that Akonadi fetches from a server are not shown: add the account to Kalendar instead.
 
 ## Google accounts
 

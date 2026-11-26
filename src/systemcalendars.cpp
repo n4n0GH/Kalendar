@@ -7,7 +7,11 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusServiceWatcher>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
@@ -40,6 +44,19 @@ constexpr int AgentTimeout = 3000;
 constexpr int SoonMilliseconds = 1000;
 constexpr int AgainMilliseconds = 20 * 1000;
 constexpr int Tries = 5;
+constexpr int TidyMilliseconds = 30 * 1000;
+/// The calendar files Kalendar wrote to, kept from one start to the next.
+const QString WrittenKey = u"SystemCalendars/written"_s;
+
+/// Where the programs of the system keep their data. Inside a Flatpak the
+/// data folder is the app's own; the system's is named.
+QString systemData()
+{
+    if (QFile::exists(u"/.flatpak-info"_s)) {
+        return qEnvironmentVariable("HOST_XDG_DATA_HOME", QDir::homePath() + u"/.local/share"_s);
+    }
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+}
 
 /// Akonadi can run more than once for one user; each run has a name that
 /// its services end in.
@@ -78,9 +95,16 @@ CalendarInfo calendar(const QString &path, const QString &name, bool readOnly)
 SystemCalendars::SystemCalendars(bool testMode, QObject *parent)
     : QObject(parent)
     , m_testMode(testMode)
+    , m_agentData(systemData())
+    , m_tidy(new QTimer(this))
     , m_soon(new QTimer(this))
     , m_again(new QTimer(this))
 {
+    m_tidy->setSingleShot(true);
+    m_tidy->setInterval(TidyMilliseconds);
+    connect(m_tidy, &QTimer::timeout, this, [this] {
+        tidy(false);
+    });
     m_soon->setSingleShot(true);
     m_soon->setInterval(SoonMilliseconds);
     connect(m_soon, &QTimer::timeout, this, &SystemCalendars::refresh);
@@ -138,6 +162,7 @@ void SystemCalendars::refresh()
 void SystemCalendars::look()
 {
     const quint64 round = ++m_round;
+    m_asked.clear();
     if (m_testMode) {
         QList<CalendarInfo> calendars;
         const QStringList named = qEnvironmentVariable("KALENDAR_SYSTEM_CALENDARS").split(u',', Qt::SkipEmptyParts);
@@ -247,6 +272,7 @@ void SystemCalendars::ask(quint64 round, QList<Agent> agents, const QList<Calend
                 ask(round, agents, calendars, complete);
                 return;
             }
+            m_asked.insert(QDir::cleanPath(path), agent.instance);
             const auto named = [=, this](bool readOnly) {
                 call(
                     control(),
@@ -303,6 +329,81 @@ void SystemCalendars::finish(const QList<CalendarInfo> &calendars, bool complete
         m_again->start();
     }
     Q_EMIT found(calendars, complete);
+    if (!m_testMode) {
+        // What an agent that did not answer has is still as it was found before.
+        if (complete) {
+            m_agents = m_asked;
+        } else {
+            m_agents.insert(m_asked);
+        }
+        tidy(complete);
+    }
+}
+
+void SystemCalendars::setAgentData(const QString &folder)
+{
+    m_agentData = folder;
+}
+
+void SystemCalendars::noteWritten(const QUrl &file)
+{
+    const QString path = QDir::cleanPath(file.toLocalFile());
+    if (m_testMode || !file.isLocalFile()) {
+        return;
+    }
+    QSettings settings;
+    QStringList written = settings.value(WrittenKey).toStringList();
+    if (!written.contains(path)) {
+        written.append(path);
+        settings.setValue(WrittenKey, written);
+    }
+    m_tidy->start();
+}
+
+void SystemCalendars::tidy(bool complete)
+{
+    QSettings settings;
+    const QStringList written = settings.value(WrittenKey).toStringList();
+    QStringList kept;
+    for (const QString &path : written) {
+        const QString agent = m_agents.value(path);
+        if (!agent.isEmpty()) {
+            prune(m_agentData + u'/' + agent, QFileInfo(path).fileName());
+        }
+        // A calendar that Akonadi no longer has gets no more copies.
+        if (!agent.isEmpty() || !complete) {
+            kept.append(path);
+        }
+    }
+    if (kept.isEmpty() && !written.isEmpty()) {
+        settings.remove(WrittenKey);
+    } else if (kept != written) {
+        settings.setValue(WrittenKey, kept);
+    }
+}
+
+int SystemCalendars::prune(const QString &folder, const QString &name, int keep, int days)
+{
+    if (folder.isEmpty() || name.isEmpty()) {
+        return 0;
+    }
+    // Only what is named like a copy of this very file, and is a file.
+    const QRegularExpression copy(u'^' + QRegularExpression::escape(name) + u"-[0-9]+$"_s);
+    const QDateTime limit = QDateTime::currentDateTime().addDays(-days);
+    // The newest first. Akonadi numbers its copies, but takes a number
+    // that is free again, so the numbers say nothing about their age.
+    const QFileInfoList files = QDir(folder).entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Time);
+    int copies = 0;
+    int removed = 0;
+    for (const QFileInfo &file : files) {
+        if (!copy.match(file.fileName()).hasMatch()) {
+            continue;
+        }
+        if (++copies > keep && file.lastModified() < limit && QFile::remove(file.absoluteFilePath())) {
+            ++removed;
+        }
+    }
+    return removed;
 }
 
 #include "moc_systemcalendars.cpp"

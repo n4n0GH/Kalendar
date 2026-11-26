@@ -165,6 +165,9 @@ Backend::Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, S
     if (system) {
         // Which calendar files the system has; the engine reads them.
         connect(system, &SystemCalendars::found, engine, &Engine::setSystemCalendars);
+        // Akonadi keeps a copy of a calendar for every change made to its
+        // file from here; the old ones are cleared away.
+        connect(engine, &Engine::systemCalendarWritten, system, &SystemCalendars::noteWritten);
     }
 
     connect(m_timer, &QTimer::timeout, this, &Backend::sync);

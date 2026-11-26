@@ -176,6 +176,8 @@ Q_SIGNALS:
     void errorsChanged();
     /// Something happened that could be missed, in words for the user.
     void notice(const QString &text);
+    /// Events were written into this calendar file of the system.
+    void systemCalendarWritten(const QUrl &file);
 
 private:
     struct Item {

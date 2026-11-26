@@ -707,7 +707,10 @@ private Q_SLOTS:
             };
 
             // A new event goes into the file, and everything else in it stays.
+            QSignalSpy written(&engine, &Engine::systemCalendarWritten);
             QCOMPARE(save(u"Mine"_s, 0), QString());
+            QCOMPARE(written.size(), 1);
+            QCOMPARE(written.first().first().toUrl(), QUrl::fromLocalFile(file));
             QCOMPARE(engine.pendingChanges(), 0);
             QCOMPARE(engine.accountError(u"system"_s), QString());
             QByteArray now = contentsOf(file);

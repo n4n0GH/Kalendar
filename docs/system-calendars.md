@@ -162,10 +162,31 @@ changed, the agent reads it again, and KOrganizer and the others show the
 change; tried with Akonadi 26.08, that takes a few seconds. As a precaution
 the agent first writes down the calendar as it had it, as a file of its own
 (`~/.local/share/akonadi_ical_resource_<n>/<name>-1`, `-2`, …): **one such
-copy for every change made from outside**, which nobody clears away. That is
-Akonadi's doing and cannot be switched off from here. The agent may also
-write the file anew in its own order afterwards, which Kalendar reads like
-any other change.
+copy for every change made from outside**, which Akonadi never clears away.
+That is Akonadi's doing and cannot be switched off from here. The agent may
+also write the file anew in its own order afterwards, which Kalendar reads
+like any other change.
+
+**Clearing the copies away.** Since Kalendar is what makes them pile up, it
+tidies up. The engine says which file it wrote to
+(`systemCalendarWritten()`), and `SystemCalendars`, which knows the agent of
+each file, keeps a list of those files (`SystemCalendars/written` in the
+settings) and prunes the folders of their agents (`prune()`): half a minute
+after a write, and whenever Akonadi was asked for its calendars.
+
+- A copy goes if it is **older than 30 days and not among the newest five**.
+  A copy is not always worthless: if another program had a change that was
+  not written down yet when Kalendar wrote, the copy is where it is. The
+  recent ones stay for that.
+- Only files named like a copy of that very calendar file go (`<name>-`
+  and a number). Akonadi takes a number that is free again, so their age is
+  told by their time, not their number.
+- Only for calendars Kalendar wrote to. Copies that other programs' changes
+  left in other agents' folders are none of its business.
+- A calendar that Akonadi no longer has is taken off the list, and its
+  folder is left as it is.
+- Inside the Flatpak the data folder is the app's own; the system's, where
+  the agents' folders are, is taken from `HOST_XDG_DATA_HOME`.
 
 ## Handing Kalendar's events to the system
 

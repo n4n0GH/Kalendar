@@ -1523,6 +1523,7 @@ bool Engine::writeSystemCalendar(const QString &collectionId, const QStringList 
         }
     }
     m_db.commit();
+    Q_EMIT systemCalendarWritten(found->url);
     // What else is in the file by now is taken over along the way.
     QString error;
     if (readSystemCalendar(collectionId, &error)) {
