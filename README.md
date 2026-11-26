@@ -13,6 +13,8 @@ A simple calendar for KDE Plasma that works with online accounts.
 - Google Calendar, through the Google accounts the system is signed in to, and any service that offers CalDAV: Nextcloud,
   iCloud, Fastmail, Radicale, and others.
 - A calendar that is kept on this system only, so the app is usable from the first start.
+- The calendars other programs keep on this system, to look at: the calendar files that Akonadi shows, such as
+  KOrganizer's, with to-dos on the day they are due.
 - Events can be added, changed and deleted without a network; they are sent on at the next synchronization.
 - Repeating events (every day, week, month or year); other rhythms made elsewhere are shown and kept.
 - A click on an event shows it to read, with notes written as HTML shown as such; editing is one step further.
@@ -80,6 +82,18 @@ sudo cmake --install build --component plasmaplugin
 The plugin only reads. It shows the calendars that are shown in Kalendar, and follows changes made there by itself.
 Events from servers are as fresh as Kalendar's last synchronization, so Kalendar has to run now and then.
 
+## The calendars of the system
+
+KOrganizer, Merkuro and the calendar of Plasma's clock share their calendars through Akonadi. Kalendar shows those of
+them that are calendar files, under **System Calendars** in the sidebar: KOrganizer's own calendar, and whatever a
+program or the user added to the system as a calendar file. They appear by themselves wherever Akonadi runs, follow the
+files as they change, and can only be looked at; a to-do that is open is shown on the day it is due.
+
+Kalendar asks Akonadi on the session bus which files it shows and reads those files (`src/systemcalendars.*`); nothing
+of Akonadi is linked, so it works from the Flatpak too, which may read the home folder for this. Calendars that Akonadi
+fetches from a server are not shown: add the account to Kalendar instead. Plasma's clock has Akonadi's calendars from
+its own plugin, so Kalendar's plugin leaves them out.
+
 ## Google accounts
 
 Kalendar uses the Google accounts that the system is signed in to: those under **Online Accounts** in System Settings.
@@ -117,16 +131,18 @@ a few example events, keeps its data apart (in `~/.qttest`), and leaves the wall
 | `src/core/` | Storage and synchronization, without any GUI: the database, the clients for CalDAV and for Google's Calendar API, and the engine that keeps both in step and lays events out for the views. |
 | `src/backend.*` | What the interface asks of the calendars; adds signing in and settings. |
 | `src/onlineaccounts.*`, `src/secretstore.*` | The Google accounts of the system's Online Accounts; passwords in KWallet. |
+| `src/systemcalendars.*` | Which calendar files Akonadi shows. |
 | `src/clockplugin.*`, `src/plasma/` | Installing the plugin for the calendar of Plasma's clock, and the plugin. |
 | `src/qml/` | The interface. |
 | `autotests/` | Tests for the above. |
 
 The [code documentation](docs/README.md) goes into each of these: architecture, synchronization, accounts and signing
-in, the interface, the clock plugin, and how to build, test and extend it.
+in, the calendars of the system, the interface, the clock plugin, and how to build, test and extend it.
 
 ## Not there yet
 
-- Reminders, invitations and attendees, and tasks.
+- Reminders, invitations and attendees, and tasks of one's own (to-dos of the system's calendars are shown).
+- Akonadi's calendars that are not files: those it fetches from servers, and birthdays from the address book.
 - Changing a single day of a repeating event (deleting one works, and days changed elsewhere are shown and can be edited).
 - Creating, renaming and recolouring calendars; they are taken as the server has them.
 - Fetching only what changed from Google: its calendars are read in full at every synchronization.

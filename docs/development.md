@@ -50,10 +50,11 @@ ctest --test-dir build --output-on-failure
 | --- | --- | --- |
 | `appstreamtest` | The metainfo file is valid | |
 | `davparsertest` | Reading CalDAV answers | |
-| `enginetest` | The calendar on this system: events, repetition, layouts, undo | |
+| `enginetest` | The calendar on this system: events, repetition, layouts, undo; the calendar files of the system | |
 | `synctest` | Two Kalendars sharing an account on a real CalDAV server | Radicale |
 | `googletest` | Google's events to calendar files and back; a full round with the stand-in for Google | `python3` |
 | `onlineaccountstest` | Reading the system's account list | |
+| `systemcalendarstest` | Asking Akonadi for its calendar files, with a stand-in for Akonadi | a session bus |
 | `clockplugintest` | Installing, refreshing and removing the clock plugin, in a temporary folder | |
 | `backendtest` | Adding and removing accounts, times of day, notes | Radicale, `python3` |
 | `plasmaplugintest` | The plugin, loaded as Plasma would | KDeclarative |
@@ -91,8 +92,9 @@ written to pass in any, and worth running with `TZ=America/New_York` and
   `QT_FORCE_STDERR_LOGGING=1` to get QML errors where you are looking.
 - **Without touching real data.** `KALENDAR_TEST_MODE=1` keeps data and
   settings under `~/.qttest`, keeps passwords in memory, takes Online
-  Accounts from `KALENDAR_ONLINE_ACCOUNTS`, and installs the clock plugin
-  under `~/.qttest`. `KALENDAR_DEMO=1` adds a few events around today.
+  Accounts from `KALENDAR_ONLINE_ACCOUNTS` and the calendars of the system
+  from `KALENDAR_SYSTEM_CALENDARS` (`"To-Dos=/path/to-dos.ics"`) instead of
+  Akonadi, and installs the clock plugin under `~/.qttest`. `KALENDAR_DEMO=1` adds a few events around today.
 - **Without a display.** In test mode, `KALENDAR_EVAL` runs JavaScript in the
   scope of `Main.qml`, and `KALENDAR_SCREENSHOT` saves a picture and quits:
 
@@ -176,4 +178,6 @@ They are listed in the [README](../README.md#not-there-yet). The ones that
 shape the code most: one appearance of a repeating event can be deleted but
 not changed here (changed ones from elsewhere are shown, and can be edited);
 Google's calendars are listed in full at every round; reminders, guests and
-tasks are not read at all, though on Google they survive Kalendar's changes.
+tasks are not read at all, though on Google they survive Kalendar's changes
+(the to-dos of the system's calendars are the exception: they are shown,
+see [The calendars of the system](system-calendars.md)).

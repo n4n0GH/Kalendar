@@ -16,6 +16,9 @@ struct Account {
         CalDav = 1,
         /// A Google account that the system's Online Accounts signed in to.
         Google = 2,
+        /// The calendars the system has besides Kalendar's: calendar files
+        /// that Akonadi shows, which are read as they are and never written.
+        System = 3,
     };
 
     QString id;
@@ -33,10 +36,13 @@ struct Account {
 struct Collection {
     QString id;
     QString accountId;
+    /// For a calendar of the system: the calendar file, or the folder of them.
     QUrl url;
     QString name;
     QColor color;
     /// The server's marker for "something in here changed"; empty when unknown.
+    /// For a calendar of the system: what tells its files as they were read
+    /// from what they are now.
     QString ctag;
     /// Whether its events are shown.
     bool enabled = true;

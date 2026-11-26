@@ -9,6 +9,7 @@
 #include "onlineaccounts.h"
 #include "secretstore.h"
 #include "singleinstance.h"
+#include "systemcalendars.h"
 
 #include <KAboutData>
 #include <KColorSchemeManager>
@@ -178,7 +179,8 @@ int main(int argc, char **argv)
     }
     SecretStore secrets(testMode);
     OnlineAccounts online(testMode);
-    Backend backend(&engine, &secrets, &online);
+    SystemCalendars system(testMode);
+    Backend backend(&engine, &secrets, &online, &system);
     Backend::setInstance(&backend);
     // An installed plugin is to be of this version of Kalendar.
     ClockPlugin().refresh();

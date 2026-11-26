@@ -13,6 +13,7 @@
 class OnlineAccounts;
 class QTimer;
 class SecretStore;
+class SystemCalendars;
 
 /// The calendars, for the list in the sidebar.
 class CalendarListModel : public QAbstractListModel
@@ -28,7 +29,7 @@ public:
         ShownRole,
         AccountNameRole,
         AccountIdRole,
-        /// "local", "caldav" or "google".
+        /// "local", "caldav", "google" or "system".
         AccountKindRole,
         /// Whether this is the first calendar of its account in the list.
         FirstOfAccountRole,
@@ -56,8 +57,8 @@ class Backend : public QObject
     QML_SINGLETON
 
     Q_PROPERTY(CalendarListModel *calendars READ calendars CONSTANT)
-    /// The accounts, each with id, name, kind (local, caldav or google),
-    /// description, error and removable.
+    /// The accounts, each with id, name, kind (local, caldav, google or
+    /// system), description, error and removable.
     Q_PROPERTY(QVariantList accounts READ accounts NOTIFY accountsChanged)
     /// Goes up whenever events may look different; views read it so that
     /// they lay themselves out again.
@@ -85,7 +86,8 @@ class Backend : public QObject
     Q_PROPERTY(QVariantList writableCalendars READ writableCalendars NOTIFY writableCalendarsChanged)
 
 public:
-    explicit Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, QObject *parent = nullptr);
+    /// Without @p system, the calendars of the system are left out.
+    explicit Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, SystemCalendars *system = nullptr, QObject *parent = nullptr);
     /// There is one Backend, made in main().
     static Backend *create(QQmlEngine *, QJSEngine *);
     static void setInstance(Backend *backend);
@@ -186,6 +188,7 @@ private:
     Engine *const m_engine;
     SecretStore *const m_secrets;
     OnlineAccounts *const m_online;
+    SystemCalendars *const m_system;
     CalendarListModel *const m_calendars;
     QTimer *const m_timer;
     int m_revision = 0;

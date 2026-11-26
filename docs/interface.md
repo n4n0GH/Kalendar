@@ -42,14 +42,14 @@ created once in `Main.qml` and opened through functions of the window:
 | File | What it is |
 | --- | --- |
 | `Main.qml` | The window: state, dialogs, the functions pages call |
-| `Sidebar.qml` | The global drawer: small month, calendars in groups by account that fold away, the bar that shows fetching |
+| `Sidebar.qml` | The global drawer: small month, calendars in groups by account (the system's among them) that fold away, the bar that shows fetching |
 | `MiniMonth.qml` | The small month, with a dot on days that have events (`Backend.busyDays()`), and week numbers if wanted |
 | `CalendarPage.qml` | The one page: toolbar, and the view for the mode |
 | `MonthView.qml` | Six weeks, each laid out by `Backend.weekLayout()` |
 | `AgendaView.qml` | The selected day and those after it, one below the other, each with its events stacked |
 | `WeekView.qml` | The days of a week side by side, with hours down the side |
 | `EventChip.qml` | One event in any view: a dot and a title, a bar, a block, or a row |
-| `EventViewDialog.qml` | An event to read |
+| `EventViewDialog.qml` | An event to read; says so if it is a to-do of a calendar of the system |
 | `EventDialog.qml` | An event to make or change |
 | `DateButton.qml`, `TimeField.qml` | Picking a day; typing or picking a time |
 | `CalendarLabel.qml` | A calendar in a list: colour, name, where it is kept |

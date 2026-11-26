@@ -120,7 +120,8 @@ Kirigami.ScrollablePage {
                         // A problem is told in words and with a warning sign, not by colour.
                         subtitle: row.failed ? row.modelData.error : row.modelData.description
                         icon.name: row.failed ? "data-warning"
-                            : row.modelData.kind === "local" ? "computer" : "folder-cloud"
+                            : row.modelData.kind === "local" ? "computer"
+                            : row.modelData.kind === "system" ? "view-calendar-list" : "folder-cloud"
                         wrapMode: Text.WordWrap
                     }
                     QQC2.ToolButton {

@@ -17,7 +17,9 @@ asks for the events of a range of days (`loadEventsForDateRange()`), it opens
 Kalendar's database read-only through the same `Engine` the app uses
 (`openReadOnly()`), and hands over every appearance of an event in the
 calendars that are shown in Kalendar. An event that takes several days is
-listed on each of them.
+listed on each of them. The [calendars of the system](system-calendars.md)
+are left out: Plasma has those from Akonadi, with a plugin of its own, and
+would show them twice.
 
 Opening the database means reading every event there is, which takes a
 moment (a tenth of a second for two thousand events), and Plasma asks often:

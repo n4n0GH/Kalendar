@@ -14,13 +14,15 @@ C++ objects created in `src/main.cpp`.
           └───────────────┬───────────────────────────────┬───────────────┘
                           │                               │
                        Backend ── SecretStore ── KWallet  ClockPlugin
-                          │   └── OnlineAccounts ── accounts.db, signond
+                          │   ├── OnlineAccounts ── accounts.db, signond
+                          │   └── SystemCalendars ── Akonadi (D-Bus)
                           ▼
                         Engine ──────────────── Database (SQLite)
                           │
-            ┌─────────────┴─────────────┐
-        DavClient                 GoogleClient
-        (CalDAV servers)          (Google's Calendar API)
+            ┌─────────────┼─────────────────────────┐
+        DavClient     GoogleClient                 calendar files
+        (CalDAV       (Google's Calendar API)      (those Akonadi shows)
+        servers)
 
    Plasma's clock ── kalendarevents.so ── Engine (read-only) ── the same database
 ```
@@ -37,12 +39,13 @@ C++ objects created in `src/main.cpp`.
 | `Backend` | `src/backend.*` | What QML talks to. A thin layer over the engine that adds what only an app has: signing in, settings, text for people. |
 | `SecretStore` | `src/secretstore.*` | Passwords in KWallet. |
 | `OnlineAccounts` | `src/onlineaccounts.*` | The Google accounts of the system's Online Accounts, and tokens for them. |
+| `SystemCalendars` | `src/systemcalendars.*` | Which calendar files Akonadi shows, asked over D-Bus. The engine reads them. See [The calendars of the system](system-calendars.md). |
 | `SingleInstance` | `src/singleinstance.*` | Keeps Kalendar to one process, and hands that one the files another was started with. |
 | `ClockPlugin` | `src/clockplugin.*` | Installs the plugin for Plasma's clock for the user. |
 | `KalendarEventsPlugin` | `src/plasma/` | The plugin itself, which runs inside Plasma. |
 
-`main()` creates the engine, the secret store, the Online Accounts reader and
-the backend, in that order, and hands the backend to QML through a static
+`main()` creates the engine, the secret store, the Online Accounts reader,
+the finder of the system's calendars and the backend, in that order, and hands the backend to QML through a static
 `create()` that returns the existing instance (`QML_SINGLETON` with C++
 ownership). `ClockPlugin` depends on nothing and is created by the QML engine
 on first use.
@@ -97,7 +100,7 @@ whichever database was written last.
 Three tables, created on first use:
 
 ```
-accounts     id, type (0 local, 1 CalDAV, 2 Google), name, url, user
+accounts     id, type (0 local, 1 CalDAV, 2 Google, 3 system), name, url, user
 collections  id, account, url, name, color, ctag, enabled, readonly
 items        collection, href, etag, ics, dirty        key: (collection, href)
 ```
@@ -114,6 +117,6 @@ writes.
 ## Online services
 
 Kalendar talks to the servers of the accounts the user added and to nothing
-else. It has no telemetry and fetches nothing by itself: notes of events are
+else; the calendars of the system are files on this computer. It has no telemetry and fetches nothing by itself: notes of events are
 shown with pictures and scripts removed for that reason (see
 [Interface](interface.md#notes)).

@@ -36,6 +36,15 @@ ecm_add_test(onlineaccountstest.cpp
 target_compile_definitions(onlineaccountstest PRIVATE TRANSLATION_DOMAIN="kalendar")
 target_include_directories(onlineaccountstest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# The calendar files that Akonadi shows, with a stand-in for Akonadi on the
+# session bus; skipped where there is no session bus.
+ecm_add_test(systemcalendarstest.cpp
+        ${CMAKE_SOURCE_DIR}/src/systemcalendars.cpp
+    TEST_NAME systemcalendarstest
+    LINK_LIBRARIES kalendarcore Qt6::Test Qt6::DBus
+)
+target_include_directories(systemcalendarstest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # Installing the plugin for Plasma's clock for one user.
 ecm_add_test(clockplugintest.cpp
         ${CMAKE_SOURCE_DIR}/src/clockplugin.cpp
@@ -58,6 +67,7 @@ ecm_add_test(backendtest.cpp
         ${CMAKE_SOURCE_DIR}/src/backend.cpp
         ${CMAKE_SOURCE_DIR}/src/onlineaccounts.cpp
         ${CMAKE_SOURCE_DIR}/src/secretstore.cpp
+        ${CMAKE_SOURCE_DIR}/src/systemcalendars.cpp
     TEST_NAME backendtest
     LINK_LIBRARIES kalendarcore Qt6::Test Qt6::Qml Qt6::Gui Qt6::Network Qt6::DBus KF6::I18n KF6::Wallet
 )

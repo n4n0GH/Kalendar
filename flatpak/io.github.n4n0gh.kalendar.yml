@@ -29,6 +29,16 @@ finish-args:
   # (only read), and the service that is signed in to them.
   - --filesystem=xdg-config/libaccounts-glib:ro
   - --talk-name=com.google.code.AccountsSSO.SingleSignOn
+  # The calendars of the system. Akonadi is asked, on the session bus, which
+  # calendar files it shows: its control knows the agents, and each agent for
+  # a calendar file knows where its file is. It is asked, never told.
+  - --talk-name=org.freedesktop.Akonadi.Control
+  - --talk-name=org.freedesktop.Akonadi.Resource.*
+  # Those files are then read, wherever in the home folder they are; other
+  # Flatpaks keep theirs in their data folders, which the home folder alone
+  # leaves out. Nothing of either is written.
+  - --filesystem=home:ro
+  - --filesystem=~/.var/app:ro
   # Installing the plugin for the calendar of Plasma's clock, from the
   # settings: a copy of the plugin, and the line that tells Plasma at login
   # where to look for it.

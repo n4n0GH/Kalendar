@@ -36,6 +36,8 @@ add_executable(kalendar
     secretstore.h
     singleinstance.cpp
     singleinstance.h
+    systemcalendars.cpp
+    systemcalendars.h
 )
 
 ecm_add_qml_module(kalendar

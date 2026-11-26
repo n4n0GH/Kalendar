@@ -6,6 +6,7 @@
 #include "googleclient.h"
 #include "onlineaccounts.h"
 #include "secretstore.h"
+#include "systemcalendars.h"
 
 #include <KLocalizedString>
 
@@ -26,6 +27,22 @@ namespace
 {
 Backend *s_instance = nullptr;
 constexpr int SyncMinutes = 15;
+
+/// What kind of account it is, in a word for QML.
+QString kindOf(const Account *account)
+{
+    switch (account ? account->type : Account::Local) {
+    case Account::CalDav:
+        return u"caldav"_s;
+    case Account::Google:
+        return u"google"_s;
+    case Account::System:
+        return u"system"_s;
+    case Account::Local:
+        break;
+    }
+    return u"local"_s;
+}
 }
 
 // CalendarListModel
@@ -92,10 +109,8 @@ QVariant CalendarListModel::data(const QModelIndex &index, int role) const
     }
     case AccountIdRole:
         return collection->accountId;
-    case AccountKindRole: {
-        const Account *account = m_engine->account(collection->accountId);
-        return !account || account->type == Account::Local ? u"local"_s : account->type == Account::Google ? u"google"_s : u"caldav"_s;
-    }
+    case AccountKindRole:
+        return kindOf(m_engine->account(collection->accountId));
     case FirstOfAccountRole: {
         const Collection *previous = index.row() > 0 ? m_engine->collection(m_ids.at(index.row() - 1)) : nullptr;
         return !previous || previous->accountId != collection->accountId;
@@ -120,11 +135,12 @@ QHash<int, QByteArray> CalendarListModel::roleNames() const
 
 // Backend
 
-Backend::Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, QObject *parent)
+Backend::Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, SystemCalendars *system, QObject *parent)
     : QObject(parent)
     , m_engine(engine)
     , m_secrets(secrets)
     , m_online(online)
+    , m_system(system)
     , m_calendars(new CalendarListModel(engine, this))
     , m_timer(new QTimer(this))
 {
@@ -143,6 +159,10 @@ Backend::Backend(Engine *engine, SecretStore *secrets, OnlineAccounts *online, Q
     connect(engine, &Engine::syncingChanged, this, &Backend::syncingChanged);
     connect(engine, &Engine::syncProgressChanged, this, &Backend::syncProgressChanged);
     connect(engine, &Engine::notice, this, &Backend::notice);
+    if (system) {
+        // Which calendar files the system has; the engine reads them.
+        connect(system, &SystemCalendars::found, engine, &Engine::setSystemCalendars);
+    }
 
     connect(m_timer, &QTimer::timeout, this, &Backend::sync);
     m_timer->start(SyncMinutes * 60 * 1000);
@@ -194,22 +214,25 @@ QVariantList Backend::accounts() const
         for (const Collection &collection : m_engine->collections()) {
             calendars += collection.accountId == account.id;
         }
-        QString kind = u"local"_s;
         QString description = i18nc("@info", "Kept on this system only");
         if (account.type == Account::Google) {
-            kind = u"google"_s;
             description = i18ncp("@info", "Google, %1 calendar", "Google, %1 calendars", calendars);
         } else if (account.type == Account::CalDav) {
-            kind = u"caldav"_s;
             description = i18ncp("@info %2 is the name of a server", "%2, %1 calendar", "%2, %1 calendars", calendars, account.url.host());
+        } else if (account.type == Account::System) {
+            description = i18ncp("@info Akonadi is the name of the service that keeps the calendars of KDE’s other programs",
+                                 "Shown as Akonadi has it, %1 calendar",
+                                 "Shown as Akonadi has them, %1 calendars",
+                                 calendars);
         }
         result.append(QVariantMap{
             {u"id"_s, account.id},
             {u"name"_s, account.name},
-            {u"kind"_s, kind},
+            {u"kind"_s, kindOf(&account)},
             {u"description"_s, description},
             {u"error"_s, m_engine->accountError(account.id)},
-            {u"removable"_s, account.type != Account::Local},
+            // Those of the system come and go with the system's.
+            {u"removable"_s, account.type == Account::CalDav || account.type == Account::Google},
         });
     }
     return result;
@@ -415,6 +438,9 @@ void Backend::setCalendarShown(const QString &id, bool shown)
 
 void Backend::sync()
 {
+    if (m_system) {
+        m_system->refresh();
+    }
     m_engine->syncAll();
 }
 

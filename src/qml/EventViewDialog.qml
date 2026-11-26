@@ -116,6 +116,11 @@ Kirigami.Dialog {
             icon: "view-refresh"
             text: dialog.repeats
         }
+        // From a calendar of the system, where to-dos stand on the day they are due.
+        Line {
+            icon: "view-task"
+            text: dialog.event?.todo ? i18nc("@info said of an entry of the calendar", "A to-do, shown when it is due") : ""
+        }
         Line {
             icon: "mark-location"
             text: dialog.event?.location ?? ""

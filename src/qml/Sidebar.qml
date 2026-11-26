@@ -130,7 +130,8 @@ Kirigami.GlobalDrawer {
                                 Kirigami.Icon {
                                     anchors.fill: parent
                                     visible: row.accountKind !== "google"
-                                    source: row.accountKind === "local" ? "view-calendar-symbolic" : "folder-cloud-symbolic"
+                                    source: row.accountKind === "local" ? "view-calendar-symbolic"
+                                        : row.accountKind === "system" ? "computer-symbolic" : "folder-cloud-symbolic"
                                     isMask: true
                                     color: Kirigami.Theme.textColor
                                 }

@@ -4,12 +4,86 @@
 #include "engine.h"
 #include "importsample.h"
 
+#include <QSaveFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
 
 using namespace Qt::StringLiterals;
+
+namespace
+{
+/// A calendar file as another program of this system keeps it: an event, and
+/// to-dos, of which @p open are still to be done.
+QByteArray systemSample(int open, const QByteArray &name = "To-Dos")
+{
+    QByteArray ics = "BEGIN:VCALENDAR\r\n"
+                     "VERSION:2.0\r\n"
+                     "PRODID:-//Elsewhere//Lists//EN\r\n"
+                     "CALSCALE:GREGORIAN\r\n"
+                     "X-WR-CALNAME:"
+        + name
+        + "\r\n"
+          "BEGIN:VEVENT\r\n"
+          "UID:review@elsewhere\r\n"
+          "DTSTAMP:20261120T080000Z\r\n"
+          "SUMMARY:Review\r\n"
+          "DTSTART:20261127T100000\r\n"
+          "DTEND:20261127T110000\r\n"
+          "END:VEVENT\r\n"
+          // Done, and one that is due on no day: neither has a place in a calendar.
+          "BEGIN:VTODO\r\n"
+          "UID:done@elsewhere\r\n"
+          "DTSTAMP:20261120T080000Z\r\n"
+          "SUMMARY:Buy stamps\r\n"
+          "DUE;VALUE=DATE:20261128\r\n"
+          "STATUS:COMPLETED\r\n"
+          "COMPLETED:20261121T090000Z\r\n"
+          "END:VTODO\r\n"
+          "BEGIN:VTODO\r\n"
+          "UID:someday@elsewhere\r\n"
+          "DTSTAMP:20261120T080000Z\r\n"
+          "SUMMARY:Learn the cello\r\n"
+          "END:VTODO\r\n";
+    if (open >= 1) {
+        ics += "BEGIN:VTODO\r\n"
+               "UID:tax@elsewhere\r\n"
+               "DTSTAMP:20261120T080000Z\r\n"
+               "SUMMARY:Send the tax form\r\n"
+               "DESCRIPTION:Both pages\r\n"
+               "DUE;VALUE=DATE:20261130\r\n"
+               "STATUS:NEEDS-ACTION\r\n"
+               "END:VTODO\r\n";
+    }
+    if (open >= 2) {
+        ics += "BEGIN:VTODO\r\n"
+               "UID:call@elsewhere\r\n"
+               "DTSTAMP:20261120T080000Z\r\n"
+               "SUMMARY:Call the bank\r\n"
+               "DUE:20261130T160000\r\n"
+               "END:VTODO\r\n";
+    }
+    return ics + "END:VCALENDAR\r\n";
+}
+
+/// Writes a file the way most programs do: beside it, and then in its place.
+void replaceFile(const QString &path, const QByteArray &content)
+{
+    QSaveFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(content);
+    QVERIFY(file.commit());
+}
+
+CalendarInfo systemCalendar(const QString &path, const QString &name)
+{
+    CalendarInfo info;
+    info.url = QUrl::fromLocalFile(path);
+    info.name = name;
+    return info;
+}
+}
 
 /// The calendar on this system: no server involved.
 class EngineTest : public QObject
@@ -329,6 +403,182 @@ private Q_SLOTS:
         Engine engine;
         QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
         QCOMPARE(engine.occurrences(QDate(2026, 11, 1), QDate(2026, 12, 31)).size(), 4);
+    }
+    void showsTheCalendarFilesOfTheSystem()
+    {
+        const QString file = m_dir.filePath(u"to-dos.ics"_s);
+        replaceFile(file, systemSample(2));
+        const QDate first(2026, 11, 1);
+        const QDate last(2026, 11, 30);
+        QString calendar;
+        {
+            Engine engine;
+            QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+            QSignalSpy accounts(&engine, &Engine::accountsChanged);
+            engine.setSystemCalendars({systemCalendar(file, u"Lists"_s)});
+            QCOMPARE(accounts.size(), 1);
+            QCOMPARE(engine.accounts().size(), 2);
+            QCOMPARE(engine.accounts().last().type, Account::System);
+            QVERIFY(!engine.accounts().last().name.isEmpty());
+            QCOMPARE(engine.collections().size(), 2);
+            const Collection lists = engine.collections().last();
+            calendar = lists.id;
+            QCOMPARE(lists.name, u"Lists"_s);
+            QVERIFY(lists.readOnly);
+            QVERIFY(lists.enabled);
+            QCOMPARE(engine.accountError(lists.accountId), QString());
+
+            // The event, and the two to-dos that are open and due, when they are due.
+            QCOMPARE(engine.occurrences(first, last).size(), 3);
+            const QList<Occurrence> review = engine.occurrences(QDate(2026, 11, 27), QDate(2026, 11, 27));
+            QCOMPARE(review.size(), 1);
+            QCOMPARE(review.first().start, QDateTime(QDate(2026, 11, 27), QTime(10, 0)));
+            const QVariantList bars = engine.weekLayout(QDate(2026, 11, 30), 1, true, 0).value(u"segments"_s).toList();
+            QCOMPARE(bars.size(), 1);
+            const QVariantMap tax = bars.first().toMap();
+            QCOMPARE(tax.value(u"title"_s).toString(), u"Send the tax form"_s);
+            QCOMPARE(tax.value(u"description"_s).toString(), u"Both pages"_s);
+            QCOMPARE(tax.value(u"allDay"_s).toBool(), true);
+            QCOMPARE(tax.value(u"todo"_s).toBool(), true);
+            QCOMPARE(tax.value(u"readOnly"_s).toBool(), true);
+            QCOMPARE(tax.value(u"calendarName"_s).toString(), u"Lists"_s);
+            const QVariantList timed = engine.dayLayout(QDate(2026, 11, 30));
+            QCOMPARE(timed.size(), 1);
+            QCOMPARE(timed.first().toMap().value(u"title"_s).toString(), u"Call the bank"_s);
+            QCOMPARE(timed.first().toMap().value(u"start"_s).toDateTime(), QDateTime(QDate(2026, 11, 30), QTime(16, 0)));
+            QCOMPARE(timed.first().toMap().value(u"todo"_s).toBool(), true);
+            QCOMPARE(engine.dayLayout(QDate(2026, 11, 27)).first().toMap().value(u"todo"_s).toBool(), false);
+
+            // They are another program's: nothing is added, changed or deleted here.
+            const QDateTime start(QDate(2026, 11, 12), QTime(14, 0));
+            QVariantMap added = eventData(engine, u"Mine"_s, start, start.addSecs(3600));
+            added.insert(u"collectionId"_s, calendar);
+            QVERIFY(!engine.saveEvent(added).isEmpty());
+            QVariantMap changed = tax;
+            changed.insert(u"originalCollectionId"_s, calendar);
+            changed.insert(u"summary"_s, u"Changed"_s);
+            QVERIFY(!engine.saveEvent(changed).isEmpty());
+            QCOMPARE(engine.deleteEvent(calendar, tax.value(u"href"_s).toString(), {}, true), 0);
+            QVERIFY(!engine.importEvents(calendar, ImportSample).isEmpty());
+            engine.removeAccount(lists.accountId);
+            QCOMPARE(engine.accounts().size(), 2);
+            QCOMPARE(engine.occurrences(first, last).size(), 3);
+            QCOMPARE(engine.pendingChanges(), 0);
+
+            // Told the same again, nothing happens; neither when the file is
+            // written anew with the same in it, or with other words around the same.
+            QSignalSpy events(&engine, &Engine::eventsChanged);
+            QSignalSpy collections(&engine, &Engine::collectionsChanged);
+            engine.setSystemCalendars({systemCalendar(file, u"Lists"_s)});
+            replaceFile(file, systemSample(2));
+            engine.readSystemCalendars();
+            replaceFile(file, systemSample(2, "Other Words"));
+            engine.syncAll();
+            QCOMPARE(events.size(), 0);
+            QCOMPARE(collections.size(), 0);
+            QCOMPARE(accounts.size(), 1);
+
+            // A to-do that is done is gone from the file, and from here by itself.
+            replaceFile(file, systemSample(1));
+            QTRY_COMPARE(engine.occurrences(first, last).size(), 2);
+            QVERIFY(engine.dayLayout(QDate(2026, 11, 30)).isEmpty());
+            // Written into, rather than replaced.
+            {
+                QFile plain(file);
+                QVERIFY(plain.open(QIODevice::WriteOnly | QIODevice::Truncate));
+                plain.write(systemSample(2));
+            }
+            QTRY_COMPARE(engine.occurrences(first, last).size(), 3);
+            // And once more, to be sure it is still watched after all that.
+            replaceFile(file, systemSample(0));
+            QTRY_COMPARE(engine.occurrences(first, last).size(), 1);
+
+            // Another name for the calendar; hidden, it stays hidden.
+            engine.setCollectionEnabled(calendar, false);
+            QVERIFY(engine.occurrences(first, last).isEmpty());
+            engine.setSystemCalendars({systemCalendar(file, u"Renamed"_s)});
+            QCOMPARE(engine.collections().size(), 2);
+            QCOMPARE(engine.collection(calendar)->name, u"Renamed"_s);
+            QVERIFY(!engine.collection(calendar)->enabled);
+            engine.setCollectionEnabled(calendar, true);
+        }
+        // Changed while Kalendar did not run.
+        replaceFile(file, systemSample(1));
+        {
+            // All of it is kept, and what changed is read at the start.
+            Engine engine;
+            QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+            QCOMPARE(engine.accounts().size(), 2);
+            QVERIFY(!engine.accounts().last().name.isEmpty());
+            QCOMPARE(engine.collection(calendar)->name, u"Renamed"_s);
+            QCOMPARE(engine.occurrences(first, last).size(), 2);
+            replaceFile(file, systemSample(2));
+            QTRY_COMPARE(engine.occurrences(first, last).size(), 3);
+
+            // What is not a calendar file is said, and what was read before stays.
+            QSignalSpy errors(&engine, &Engine::errorsChanged);
+            replaceFile(file, "No calendar at all\n");
+            QTRY_COMPARE(errors.size(), 1);
+            QVERIFY(engine.accountError(u"system"_s).contains("Renamed"_L1));
+            QCOMPARE(engine.occurrences(first, last).size(), 3);
+            replaceFile(file, systemSample(1));
+            QTRY_COMPARE(errors.size(), 2);
+            QCOMPARE(engine.accountError(u"system"_s), QString());
+            QCOMPARE(engine.occurrences(first, last).size(), 2);
+
+            // A second calendar, whose file is not there yet.
+            const QString later = m_dir.filePath(u"later.ics"_s);
+            QFile::remove(later);
+            engine.setSystemCalendars({systemCalendar(file, u"Renamed"_s), systemCalendar(later, u"Later"_s), systemCalendar(later, u"Twice"_s)});
+            QCOMPARE(engine.collections().size(), 3);
+            QCOMPARE(engine.accountError(u"system"_s), QString());
+            QCOMPARE(engine.occurrences(first, last).size(), 2);
+            replaceFile(later, systemSample(0));
+            QTRY_COMPARE(engine.occurrences(first, last).size(), 3);
+
+            // Where not every calendar could be asked about, none is taken to be gone.
+            engine.setSystemCalendars({systemCalendar(later, u"Later"_s)}, false);
+            QCOMPARE(engine.collections().size(), 3);
+            engine.setSystemCalendars({}, false);
+            QCOMPARE(engine.collections().size(), 3);
+            // One that is gone takes its events along; the last one, the account.
+            engine.setSystemCalendars({systemCalendar(later, u"Later"_s)});
+            QCOMPARE(engine.collections().size(), 2);
+            QCOMPARE(engine.occurrences(first, last).size(), 1);
+            engine.setSystemCalendars({});
+            QCOMPARE(engine.accounts().size(), 1);
+            QCOMPARE(engine.collections().size(), 1);
+            QVERIFY(engine.occurrences(first, last).isEmpty());
+        }
+        Engine engine;
+        QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+        QCOMPARE(engine.accounts().size(), 1);
+        QVERIFY(engine.occurrences(first, last).isEmpty());
+    }
+
+    void readsAFolderOfCalendarFiles()
+    {
+        // Akonadi also keeps calendars as a folder with a file for each entry.
+        const QString folder = m_dir.filePath(u"entries"_s);
+        QVERIFY(QDir().mkpath(folder));
+        replaceFile(folder + u"/one"_s, systemSample(0));
+        replaceFile(folder + u"/WARNING_README.txt"_s, "Do not create or copy files here.\n");
+        replaceFile(folder + u"/stray.txt"_s, "Not an entry\n");
+        const QDate first(2026, 11, 1);
+        const QDate last(2026, 11, 30);
+
+        Engine engine;
+        QVERIFY(engine.open(m_dir.filePath(u"test.sqlite"_s)));
+        engine.setSystemCalendars({systemCalendar(folder, u"Entries"_s)});
+        QCOMPARE(engine.accountError(u"system"_s), QString());
+        QCOMPARE(engine.occurrences(first, last).size(), 1);
+
+        QByteArray second = systemSample(1);
+        second.replace("review@elsewhere", "second@elsewhere");
+        replaceFile(folder + u"/two"_s, second);
+        QTRY_COMPARE(engine.occurrences(first, last).size(), 3);
+        QVERIFY(QFile::remove(folder + u"/one"_s));
+        QTRY_COMPARE(engine.occurrences(first, last).size(), 2);
     }
 };
 

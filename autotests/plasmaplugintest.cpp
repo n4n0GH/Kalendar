@@ -136,6 +136,19 @@ private Q_SLOTS:
         QVERIFY(!shown.contains(QDate(2026, 11, 21)));
         QCOMPARE(removed.size(), 2);
 
+        // Kalendar also shows a calendar of the system. Plasma has those
+        // from the system itself, so they are not handed over from here.
+        QFile file(m_dir.filePath(u"system.ics"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Elsewhere//Calendar//EN\r\nBEGIN:VEVENT\r\nUID:elsewhere\r\n"
+                   "DTSTAMP:20261120T080000Z\r\nSUMMARY:Elsewhere\r\nDTSTART;VALUE=DATE:20261127\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        file.close();
+        CalendarInfo system;
+        system.url = QUrl::fromLocalFile(file.fileName());
+        system.name = u"Of the System"_s;
+        kalendar.setSystemCalendars({system});
+        QCOMPARE(kalendar.occurrences(QDate(2026, 11, 27), QDate(2026, 11, 27)).size(), 1);
+
         // A calendar that is hidden in Kalendar is hidden here too.
         kalendar.setCollectionEnabled(calendar, false);
         QTRY_COMPARE_WITH_TIMEOUT(shown.size(), 0, 5000);

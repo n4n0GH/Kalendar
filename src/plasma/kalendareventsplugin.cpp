@@ -216,6 +216,12 @@ std::optional<KalendarEventsPlugin::Shown> KalendarEventsPlugin::Reader::read(co
     const QList<Occurrence> occurrences = engine.occurrences(start, end);
     for (const Occurrence &occurrence : occurrences) {
         const Collection *calendar = engine.collection(occurrence.collectionId);
+        const Account *account = calendar ? engine.account(calendar->accountId) : nullptr;
+        if (account && account->type == Account::System) {
+            // Plasma has the calendars of the system from the system, with
+            // a plugin of their own: from here they would come twice.
+            continue;
+        }
         Entry entry;
         entry.firstDay = occurrence.firstDay;
         entry.lastDay = occurrence.lastDay;

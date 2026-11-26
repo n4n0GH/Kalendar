@@ -19,7 +19,9 @@
 
 #include <functional>
 
+class QFileSystemWatcher;
 class QNetworkAccessManager;
+class QTimer;
 
 /// One appearance of an event: an event that repeats has many.
 struct Occurrence {
@@ -100,6 +102,17 @@ public:
     QString addAccount(Account account, const QList<CalendarInfo> &calendars);
     void removeAccount(const QString &id);
     void setCollectionEnabled(const QString &id, bool enabled);
+
+    /// The calendar files the system shows (see Account::System), each with
+    /// its name and, as its address, the file or the folder of files. They
+    /// become calendars that can only be read, are read at once, and are
+    /// read again whenever the files change. With none, the account goes.
+    /// With @p complete false, not all could be asked about: calendars that
+    /// are not named are then kept rather than taken to be gone.
+    void setSystemCalendars(const QList<CalendarInfo> &calendars, bool complete = true);
+    /// Reads the system's calendar files again, those that are not as they
+    /// were read last.
+    void readSystemCalendars();
 
     void syncAll();
     void syncAccount(const QString &id);
@@ -191,8 +204,12 @@ private:
         bool wholeItem = false;
     };
 
-    void nameLocalAccount();
+    void nameAccounts();
+    void eraseAccount(const QString &id);
     Collection *findCollection(const QString &id);
+    /// Gives whether events changed; @p error is set if the files could not be read.
+    bool readSystemCalendar(const QString &collectionId, QString *error);
+    void watchSystemCalendars();
     CalendarClient *clientFor(const Account &account, const QByteArray &authorization);
     void setAccountError(const QString &accountId, const QString &error);
 
@@ -230,4 +247,8 @@ private:
     int m_lastToken = 0;
     int m_undoPeriod = 10000;
     bool m_readOnly = false;
+    /// Tells when a calendar file of the system changes; none until there is one.
+    QFileSystemWatcher *m_watcher = nullptr;
+    /// Files are written in steps, which are waited out and read as one.
+    QTimer *m_settle = nullptr;
 };
