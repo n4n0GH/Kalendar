@@ -36,6 +36,18 @@ SPDX-License-Identifier: CC0-1.0
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.6.0" date="2026-11-26">
+      <description>
+        <p>Kalendar shows the calendars that other programs keep on this computer:</p>
+        <ul>
+          <li>The calendar files that Akonadi shows, such as the calendar of KOrganizer, appear under “System Calendars” in the sidebar wherever Akonadi runs, and follow the files as they change</li>
+          <li>To-dos in them that are still open are shown on the day they are due</li>
+          <li>They can be looked at and hidden, but not changed; calendars that Akonadi fetches from a server are not among them</li>
+          <li>The plugin for the calendar of Plasma's clock leaves them out, since Plasma shows them by itself</li>
+        </ul>
+        <p>Installed as a Flatpak, Kalendar may read the home folder for this. It writes nothing there.</p>
+      </description>
+    </release>
     <release version="0.5.4" date="2026-11-18">
       <description>
         <p>Events made in a calendar of a Google account are sent to Google. Before, Google did not take them, and they stayed on this computer only without a word about it; those that are still waiting are sent now.</p>
